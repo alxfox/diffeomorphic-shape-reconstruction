@@ -257,3 +257,21 @@ def pytorch_camera(img_size, K):
     return camera_settings
 
 
+def random_crop(T, raster_settings, crop_ratio=0.5):
+    '''
+    Rendering a random subpart of the image at each iteration
+    '''
+    crop_ratio = random.random()
+    translation = random.uniform(-1, 1)
+
+    while translation > 0.7 or translation < -0.7: # The mesh should still be visible after cropping
+        translation = random.uniform(-1, 1)
+
+    while crop_ratio < 0.01: # The crop ratio should be at least 1% so that the mesh is still visible
+        crop_ratio = random.random()
+
+    T = crop_ratio * T.clone() + translation
+    image_size = raster_settings.image_size[0]
+    image_size = int(image_size * crop_ratio) # crop the image according to the crop_ratio
+
+    return T, image_size
