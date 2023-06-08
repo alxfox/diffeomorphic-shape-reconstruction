@@ -36,7 +36,7 @@ if __name__ == '__main__':
         }
     }})
 
-    n_images=30
+    n_images=29
     R = torch.zeros((n_images, 3, 3), device=device)
     T = torch.zeros((n_images, 3), device=device)
     for i in range(n_images): # read camera extrinsics
@@ -50,7 +50,7 @@ if __name__ == '__main__':
     
     camera_settings = pytorch_camera(params['rendering.rgb.image_size'], torch.from_numpy(viewpoints["K"]).float().to(device))
 
-
+    writer = imageio.get_writer("./out/render.gif", mode='I', duration=0.3)
     images = None
     for i in range(n_images):
         prd_image = render_mesh(mesh, 
@@ -63,15 +63,16 @@ if __name__ == '__main__':
                                 L0=params['rendering.rgb.L0'],
                                 device=device, background_colors=None, light_poses=None, materials=None, camera_settings=camera_settings,
                                 sigma=params['rendering.rgb.sigma'], gamma=params['rendering.rgb.gamma'])
-        prd_image = prd_image[:,:,:3]
+        prd_image = prd_image[...,:3]
         if(images == None):
             images = prd_image.unsqueeze(0)
         else:
-            images =torch.cat((images, prd_image.unsqueeze(0)), dim=0)
+            images = torch.cat((images, prd_image.unsqueeze(0)), dim=0)
         # images are saved to out as a png 
         new_L0 = params['rendering.rgb.L0']/prd_image.max()
-        img = (prd_image/prd_image.max()*255).cpu().type(torch.uint16).numpy()
-        cv2.imwrite("out/render"+"_"+str(i)+".png", img)
+        img = (prd_image/prd_image.max()*255).cpu().type(torch.uint8).numpy()[0]
+        writer.append_data(img)
+        cv2.imwrite("./out/render"+"_"+str(i)+".png", img)
 
     
         
