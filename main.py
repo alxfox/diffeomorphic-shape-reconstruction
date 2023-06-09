@@ -72,7 +72,7 @@ if __name__ == '__main__':
         new_L0 = params['rendering.rgb.L0']/prd_image.max()
         img = (prd_image/prd_image.max()*255).cpu().type(torch.uint8).numpy()[0]
         writer.append_data(img)
-        cv2.imwrite("./out/render"+"_"+str(i)+".png", img)
+        cv2.imwrite("./data/dataset/render"+"_"+str(i)+".png", img)
 
     
         
