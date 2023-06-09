@@ -50,7 +50,7 @@ if __name__ == '__main__':
     
     camera_settings = pytorch_camera(params['rendering.rgb.image_size'], torch.from_numpy(viewpoints["K"]).float().to(device))
 
-    writer = imageio.get_writer("./out/render.gif", mode='I', duration=0.3)
+    writer = imageio.get_writer("./data/render.gif", mode='I', duration=0.3)
     images = None
     for i in range(n_images):
         prd_image = render_mesh(mesh, 
