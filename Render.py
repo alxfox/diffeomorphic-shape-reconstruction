@@ -43,10 +43,10 @@ def render_mesh(mesh, modes, rotations, translations, image_size, blur_radius, f
     blend_params = BlendParams(sigma=sigma, gamma=gamma, background_color=bgc)
     shader = SoftCookTorranceShader(device=device, cameras=cameras, blend_params=blend_params)
 
-    t = (-torch.inverse(rotations[0]) @ translations[0])[None] # translation in camera space
+    #t = (-torch.inverse(rotations[0]) @ translations[0])[None] # translation in camera space
     
     lights = PointLights(device=device, location=translations,diffuse_color=torch.tensor([[L0,L0,L0]], device=device))
-    fragments = rasterizer(mesh, R=rotations, T=t)
+    fragments = rasterizer(mesh, R=rotations, T=translations)
     images = shader(fragments, mesh, lights=lights)
     return images
 
