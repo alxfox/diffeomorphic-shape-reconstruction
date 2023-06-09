@@ -12,7 +12,7 @@ import cv2
 if __name__ == '__main__':
     device = torch.device("cuda:0")
     verts, faces = load_ply("mesh_noNormals.ply")
-    viewpoints = np.load('cameras1.npz')
+    viewpoints = np.load('cameras.npz')
    
     verts_rgb = torch.ones_like(verts)[None]  # color the mesh white
     mesh = Meshes(verts=[verts.to(device)], faces=[faces.to(device)], vert_textures=verts_rgb.to(device))
@@ -26,7 +26,7 @@ if __name__ == '__main__':
     {
         'rgb': 
         {
-            'image_size': 512, #######
+            'image_size': 100, #######
             'blur_radius': 0.0, #######
             'faces_per_pixel': 4, #######
             'max_intensity': 0.15, #######   read_ing:0.09, budd_ha: 0.15, pot_2: 0.15, co_w: 0.15, bea_r:  0.2

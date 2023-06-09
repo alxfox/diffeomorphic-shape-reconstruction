@@ -33,6 +33,7 @@ def render_mesh(mesh, modes, rotations, translations, image_size, blur_radius, f
             blur_radius=min(np.log(1. / 1e-6 - 1.) * sigma, blur_radius / image_size * 2), 
             faces_per_pixel=faces_per_pixel, 
             perspective_correct= False,
+            bin_size=0
         )
     rasterizer = MeshRasterizer(cameras=cameras, raster_settings=raster_settings)
 
