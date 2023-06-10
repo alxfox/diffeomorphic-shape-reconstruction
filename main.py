@@ -11,8 +11,9 @@ import cv2
 
 if __name__ == '__main__':
     device = torch.device("cuda:0")
-    verts, faces = load_ply("mesh_noNormals.ply")
-    viewpoints = np.load('cameras.npz')
+    verts, faces = load_ply("data/output.ply")
+    # verts, faces = load_ply("mesh_noNormals.ply")
+    viewpoints = np.load('data/cameras.npz')
    
     verts_rgb = torch.ones_like(verts)[None]  # color the mesh white
     mesh = Meshes(verts=[verts.to(device)], faces=[faces.to(device)], vert_textures=verts_rgb.to(device))
@@ -70,9 +71,9 @@ if __name__ == '__main__':
             images = torch.cat((images, prd_image.unsqueeze(0)), dim=0)
         # images are saved to out as a png 
         new_L0 = params['rendering.rgb.L0']/prd_image.max()
-        img = (prd_image/prd_image.max()*255).cpu().type(torch.uint8).numpy()[0]
-        writer.append_data(img)
-        cv2.imwrite("./data/dataset/render"+"_"+str(i)+".png", img)
+        img = (prd_image/prd_image.max()*((256**2)-1)).cpu().numpy().astype(np.uint16)[0]
+        # writer.append_data(img)
+        cv2.imwrite(f"./data/dataset/render_{i:02}.png", img)
 
     
         
