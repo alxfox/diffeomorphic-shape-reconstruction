@@ -11,9 +11,9 @@ import cv2
 
 if __name__ == '__main__':
     device = torch.device("cuda:0")
-    verts, faces = load_ply("data/output.ply")
+    verts, faces = load_ply("data/mesh.ply")
     # verts, faces = load_ply("mesh_noNormals.ply")
-    viewpoints = np.load('data/cameras.npz')
+    viewpoints = np.load('data/cameras1.npz')
    
     verts_rgb = torch.ones_like(verts)[None]  # color the mesh white
     mesh = Meshes(verts=[verts.to(device)], faces=[faces.to(device)], vert_textures=verts_rgb.to(device))
