@@ -18,7 +18,7 @@ import h5py
 import trimesh
 from Model import MLP, PositionEncoding, Sequential, ShapeNet, BRDFNet
 from itertools import chain
-from utils import dotty, sample_lights_from_equirectangular_image, save_images, random_dirs, P_matrix_to_rot_trans_vectors, pytorch_camera, compile_video
+from utils import dotty, sample_lights_from_equirectangular_image, save_images, random_dirs, P_matrix_to_rot_trans_vectors, pytorch_camera, compile_video, random_crop
 import cv2
 import os
 from diligent import diligent_eval_chamfer
@@ -96,12 +96,20 @@ def train(images, silhouettes, rotations, translations, shape_net, brdf_net, opt
             if light_dirs is not None:
                 light_pose = light_dirs[i:i+1]
 
+            translations = translations[i:i+1]
+            image_size=params['rendering.rgb.image_size']
+
+            # Check if the rendering should be on a subpart of the image
+            crop = params['rendering.rgb.crop']
+            if crop: 
+                translations, image_size = random_crop(translations, image_size, crop_ratio=params['rendering.rgb.crop_ratio'])
+
             prd_image = render_mesh(mesh, 
                     modes='image_ct', #######
                     L0=10,
                     rotations=rotations[i:i+1], 
-                    translations=translations[i:i+1], 
-                    image_size=params['rendering.rgb.image_size'], 
+                    translations=translations, 
+                    image_size=image_size, 
                     blur_radius=params['rendering.rgb.blur_radius'], 
                     faces_per_pixel=params['rendering.rgb.faces_per_pixel'], 
                     device=device, background_colors=None, light_poses=light_pose, materials=None, camera_settings=camera_settings,
@@ -263,6 +271,8 @@ if __name__ == '__main__':
                 'max_intensity': 0.15, #######   read_ing:0.09, budd_ha: 0.15, pot_2: 0.15, co_w: 0.15, bea_r:  0.2
                 'sigma': 1e-4, #######
                 'gamma': 1e-4, #######
+                'crop': False, # Set to True if you want to render only a subregion of the image
+                'crop_ratio': 0.5, # Ratio of the image to keep when cropping
             },
             # 'silhouette':
             # {
