@@ -99,6 +99,7 @@ def train(images, silhouettes, rotations, translations, shape_net, brdf_net, opt
             translations = translations[i:i+1]
             image_size=params['rendering.rgb.image_size']
 
+            # Check if the rendering should be on a subpart of the image
             crop = params['rendering.rgb.crop']
             if crop: 
                 translations, image_size = random_crop(translations, image_size, crop_ratio=params['rendering.rgb.crop_ratio'])
