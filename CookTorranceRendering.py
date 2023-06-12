@@ -1,6 +1,3 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All rights reserved.
-# Interface to pytorch3d 2.5.0
-
 from typing import Tuple
 import torch
 from pytorch3d.ops import interpolate_face_attributes
@@ -105,20 +102,21 @@ def _apply_lighting_cook_torrance(
     falloff = torch.where(visible_mask, falloff, torch.zeros(1, device=falloff.device)) # (N, P) cosine falloff, 0 if not visible
 
     diffuse_albedo = textures[...,0:3]
+    diffuse_albedo[:] = 1
     n_lobes = (textures.shape[-1] - 3) // 3
     assert n_lobes*3+3 == textures.shape[-1]
-    roughness = textures[...,3:3+n_lobes]
-    specular_albedo = textures[...,3+n_lobes:3+2*n_lobes]
-    r0 = textures[...,3+2*n_lobes:3+3*n_lobes]
+    # roughness = textures[...,3:3+n_lobes]
+    # specular_albedo = textures[...,3+n_lobes:3+2*n_lobes]
+    # r0 = textures[...,3+2*n_lobes:3+3*n_lobes]
 
-    specular_reflectance = (_cook_torrance_shading(normals_, light_dirs_, view_dirs_, roughness, r0) * specular_albedo).sum(-1, keepdim=True)
+    # specular_reflectance = (_cook_torrance_shading(normals_, light_dirs_, view_dirs_, roughness, r0) * specular_albedo).sum(-1, keepdim=True)
     irradiance = torch.unsqueeze(falloff, dim=-1) * torch.unsqueeze(lights.diffuse_color, dim=1) 
 
     diffuse_color = diffuse_albedo * irradiance
-    specular_color = specular_reflectance * irradiance
+    #specular_color = specular_reflectance * irradiance
     if isinstance(lights, PointLights):
         diffuse_color = diffuse_color / torch.clamp(dot(light_dirs, light_dirs, keepdim=True), min=eps)
-        specular_color = specular_color / torch.clamp(dot(light_dirs, light_dirs, keepdim=True), min=eps)
+        #specular_color = specular_color / torch.clamp(dot(light_dirs, light_dirs, keepdim=True), min=eps)
 
     # ambient_color = 0 #lights.ambient_color
     
@@ -126,9 +124,10 @@ def _apply_lighting_cook_torrance(
         # If given packed inputs remove batch dim in output.
         return (
             diffuse_color.squeeze(),
-            specular_color.squeeze(),
+            #specular_color.squeeze(),
         )
-    return diffuse_color, specular_color, forward_facing
+    #return diffuse_color, specular_color, forward_facing
+    return diffuse_color, forward_facing
 
 
 def apply_lighting_cook_torrance(
@@ -196,10 +195,10 @@ def cook_torrance_shading(meshes, fragments, lights, cameras, materials, texels)
     pixel_normals = pixel_normals.reshape(i_shape[0], -1, 3)
     # texels = texels[...,0:1,:].expand(texels.shape) # use obly the nearest face's texture for blending
     texels = texels.reshape(pixel_normals.shape[:-1]+(-1,))
-    diffuse, specular, opacity = _apply_lighting_cook_torrance(
+    diffuse, opacity = _apply_lighting_cook_torrance(
         pixel_coords, pixel_normals, lights, cameras, materials, texels,
     )
-    colors = diffuse + specular
+    colors = diffuse 
     colors = colors.reshape(i_shape[:-1] + (-1,))
     opacity = opacity.reshape(i_shape[:-1])
     return colors, opacity
