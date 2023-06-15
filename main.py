@@ -37,7 +37,7 @@ if __name__ == '__main__':
         }
     }})
 
-    n_images=29
+    n_images=30
     R = torch.zeros((n_images, 3, 3), device=device)
     T = torch.zeros((n_images, 3), device=device)
     for i in range(n_images): # read camera extrinsics
