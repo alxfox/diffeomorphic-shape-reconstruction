@@ -13,7 +13,7 @@ if __name__ == '__main__':
     device = torch.device("cuda:0")
     verts, faces = load_ply("data/mesh.ply")
     # verts, faces = load_ply("mesh_noNormals.ply")
-    viewpoints = np.load('data/cameras1.npz')
+    viewpoints = np.load('data/cameras2.npz')
    
     verts_rgb = torch.ones_like(verts)[None]  # color the mesh white
     mesh = Meshes(verts=[verts.to(device)], faces=[faces.to(device)], vert_textures=verts_rgb.to(device))
@@ -51,7 +51,6 @@ if __name__ == '__main__':
     
     camera_settings = pytorch_camera(params['rendering.rgb.image_size'], torch.from_numpy(viewpoints["K"]).float().to(device))
 
-    writer = imageio.get_writer("./data/render.gif", mode='I', duration=0.3)
     images = []
     max_val = 0
     for i in range(n_images):

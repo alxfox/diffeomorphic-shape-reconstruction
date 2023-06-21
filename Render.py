@@ -45,7 +45,7 @@ def render_mesh(mesh, modes, rotations, translations, image_size, blur_radius, f
 
     t = (-torch.inverse(rotations[0]) @ translations[0])[None] # translation in camera space
     
-    lights = PointLights(device=device, location=translations,diffuse_color=torch.tensor([[L0,L0,L0]], device=device))
+    lights = PointLights(device=device, location=t,diffuse_color=torch.tensor([[L0,L0,L0]], device=device))
     fragments = rasterizer(mesh, R=rotations, T=t)
     images = shader(fragments, mesh, lights=lights)
     return images

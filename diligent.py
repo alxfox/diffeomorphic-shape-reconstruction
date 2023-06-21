@@ -5,6 +5,7 @@ import scipy
 import scipy.io
 import cv2
 import trimesh
+import sys
 from utils import dotty, P_matrix_to_rot_trans_vectors, pytorch_camera
 from Render import render_mesh
 from Meshes import Meshes
@@ -83,7 +84,14 @@ def load_diligent_mv_full(path_str, name_str, max_faces_no=None):
     scale = transf[0,0]
     Ps = torch.cat(Ps,dim=0) @ transf
     Ps[:,:3] = Ps[:,:3] / scale
-    return torch.cat(images,dim=0), torch.cat(masks,dim=0), torch.cat(lights,dim=0), K, Ps, transf
+    def mibibyte_size(t):
+        return (t.nelement() * t.element_size())/(2**20)
+    images = [img.cpu() for img in images]
+    images = torch.cat(images,dim=0)
+    masks = torch.cat(masks,dim=0)
+    lights = torch.cat(lights,dim=0)
+    print(mibibyte_size(images),mibibyte_size(masks),mibibyte_size(lights))
+    return images, masks, lights, K, Ps, transf
 
 @torch.no_grad()
 def diligent_eval(verts, faces, gt_verts, gt_faces, path, transf, K, Ps, masks=None, mode='normal', transform_verts=False, normals=None):

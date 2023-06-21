@@ -4,7 +4,8 @@ import pytorch3d
 from torch.nn.functional import mse_loss as mse
 import pytorch3d
 import pytorch3d.loss
-
+import numpy as np
+import cv2
 def velocity_loss(v_arr, d2v_dh2_arr, alpha=0.01):
     '''
     compute regularization term
@@ -54,7 +55,18 @@ def clipped_mae(x, y, max_val=1):
     mask = (x >= 1) & (y >= 1)
     diff = (x - y).abs()
     diff = torch.where(mask, torch.zeros_like(diff), diff)
+    img = (diff[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+    cv2.imwrite(f"./out/diff.png", img)
     return diff.mean()
+# def clipped_mae(x, y, max_val=1):
+#     # x = x / max_val
+#     # y = y / max_val
+#     # mask = (x >= 1) & (y >= 1)
+#     # diff = (x - y).abs()
+#     diff = (x-y).abs()
+#     img = (diff[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+#     cv2.imwrite(f"./out/diff.png", img)
+#     return diff.sum()
 
 def clipped_shadow(x, y, max_val=1, min_val=0.1):
     x = x / max_val

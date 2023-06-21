@@ -59,10 +59,10 @@ def train(images, silhouettes, rotations, translations, shape_net, brdf_net, opt
     def closure():
         #################################
         ## sample mesh from neural nets
+        is_render_checkpoint = N_IT % params['training.render_interval'] == 0
         nonlocal init_mesh
         if null_init:
             init_mesh = rand_ico_sphere(params['sampling.ico_sphere_level'], device=device)
-        
         s = init_mesh.verts_packed()
 
         if (params['loss.lambda_velocity']==0) or (params['loss.alpha'] == 0) or params['training.compute_velocity_seperately']:
@@ -85,9 +85,17 @@ def train(images, silhouettes, rotations, translations, shape_net, brdf_net, opt
         #################################
         ## render images with mesh
         ## and compute losses
+        image_size=params['rendering.rgb.image_size']
         batch_idx = torch.randperm(n_images)[:params['training.n_image_per_batch']]
         loss_image, loss_silhouette, loss_velocity = 0, 0, 0
-
+        if(is_render_checkpoint):
+            col_count = params['training.render_cols']
+            img_grid_width = int(col_count * image_size)
+            img_grid_height = int(n_images / col_count * image_size)
+            gt_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
+            prd_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
+            gt_sil_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
+            prd_sil_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
         for i in batch_idx:
 
             gt_image, gt_silhouette = images[i:i+1], silhouettes[i:i+1]
@@ -96,25 +104,33 @@ def train(images, silhouettes, rotations, translations, shape_net, brdf_net, opt
             if light_dirs is not None:
                 light_pose = light_dirs[i:i+1]
 
-            translations = translations[i:i+1]
-            image_size=params['rendering.rgb.image_size']
+            translation = translations[i:i+1]
 
             # Check if the rendering should be on a subpart of the image
             crop = params['rendering.rgb.crop']
             if crop: 
-                translations, image_size = random_crop(translations, image_size, crop_ratio=params['rendering.rgb.crop_ratio'])
+                translation, image_size = random_crop(translation, image_size, crop_ratio=params['rendering.rgb.crop_ratio'])
 
             prd_image = render_mesh(mesh, 
                     modes='image_ct', #######
-                    L0=10,
+                    L0=params['rendering.rgb.L0'],
                     rotations=rotations[i:i+1], 
-                    translations=translations, 
+                    translations=translation, 
                     image_size=image_size, 
                     blur_radius=params['rendering.rgb.blur_radius'], 
                     faces_per_pixel=params['rendering.rgb.faces_per_pixel'], 
                     device=device, background_colors=None, light_poses=light_pose, materials=None, camera_settings=camera_settings,
                     sigma=params['rendering.rgb.sigma'], gamma=params['rendering.rgb.gamma'])[...,:3]
-            
+            if(is_render_checkpoint):
+                grid_x_start = i.item() // col_count * image_size
+                grid_x_end = grid_x_start + image_size
+                grid_y_start = (i.item() % col_count)* image_size
+                grid_y_end = grid_y_start + image_size
+
+                img = (prd_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+                prd_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+                img = (gt_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+                gt_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
             if params['loss.lambda_image'] != 0:
                 max_intensity = params['rendering.rgb.max_intensity'] #* (np.random.rand()+1)
                 loss_tmp = clipped_mae(gt_image.cuda().clamp_max(max_intensity), prd_image, max_intensity) / params['training.n_image_per_batch']
@@ -134,10 +150,20 @@ def train(images, silhouettes, rotations, translations, shape_net, brdf_net, opt
                 #         device=device, background_colors=None, light_poses=None, materials=None, camera_settings=camera_settings_silhoutte,
                 #         sigma=params['rendering.silhouette.sigma'], gamma=params['rendering.silhouette.gamma'])
                 
+                if(is_render_checkpoint):
+                    img = (prd_silhouette[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+                    prd_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+                    img = (gt_silhouette[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+                    gt_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
                 loss_tmp = mse(gt_silhouette.cuda(), prd_silhouette) / params['training.n_image_per_batch']
                 (loss_tmp * params['loss.lambda_silhouette']).backward(retain_graph=True)
                 loss_silhouette += loss_tmp.detach()
-
+        if (is_render_checkpoint):
+            cv2.imwrite(f"./out/prd_" + str(N_IT) + ".png", prd_grid)
+            cv2.imwrite(f"./out/gt_" + str(N_IT) + ".png", gt_grid)
+            if(params['loss.lambda_silhouette'] != 0):
+                cv2.imwrite(f"./out/prd_sil_" + str(N_IT) + ".png", prd_sil_grid)
+                cv2.imwrite(f"./out/gt_sil_" + str(N_IT) + ".png", gt_sil_grid)
         if params['loss.lambda_velocity'] == 0:
             pass
         elif (params['loss.alpha'] == 0) or (not params['training.compute_velocity_seperately']):
@@ -192,7 +218,10 @@ def train(images, silhouettes, rotations, translations, shape_net, brdf_net, opt
     for N_IT in pbar:
         optimizer.zero_grad()
         mesh, losses = closure()
-
+        if(N_IT % params['training.checkpoint_interval'] == 0):
+            with torch.no_grad():
+                save_models(f'./out/{checkpoint_name}_{N_IT}', brdf_net=brdf_net, shape_net=shape_net, 
+                            optimizer=optimizer, meta=dict(loss=losses[0], params=dict(params)))
         optimizer.step()
         pbar.set_description('|'.join(f'{l:.2e}' for l in losses).replace('e', '').replace('|', ' || ', 1))
 
@@ -214,29 +243,29 @@ def call_back(mesh=None, loss=None, end=False):
         call_back.history = []
     call_back.history.append(float(loss))
 
-    if min(call_back.history) == loss:
-        save_models(f'./out/{checkpoint_name}', brdf_net=brdf_net, shape_net=shape_net, 
-                    optimizer=optimizer, meta=dict(loss=loss, params=dict(params)))
+    # if min(call_back.history) == loss:
+    #     save_models(f'./out/{checkpoint_name}', brdf_net=brdf_net, shape_net=shape_net, 
+    #                 optimizer=optimizer, meta=dict(loss=loss, params=dict(params)))
     
-    with torch.no_grad():
-        frame = render_mesh(mesh, 
-                            modes='image_ct', #######
-                            rotations=R[0:1], 
-                            translations=T[0:1], 
-                            L0=10,
-                            image_size=params['rendering.rgb.image_size'], 
-                            blur_radius=params['rendering.rgb.blur_radius'], 
-                            faces_per_pixel=params['rendering.rgb.faces_per_pixel'], 
-                            device=device, background_colors=None, light_poses=None, materials=None, camera_settings=camera_settings)[...,:3]
+    # with torch.no_grad():
+    #     frame = render_mesh(mesh, 
+    #                         modes='image_ct', #######
+    #                         rotations=R[0:1], 
+    #                         translations=T[0:1], 
+    #                         L0=params['rendering.rgb.L0'],
+    #                         image_size=params['rendering.rgb.image_size'], 
+    #                         blur_radius=params['rendering.rgb.blur_radius'], 
+    #                         faces_per_pixel=params['rendering.rgb.faces_per_pixel'], 
+    #                         device=device, background_colors=None, light_poses=None, materials=None, camera_settings=camera_settings)[...,:3]
         
-        frame = torch.cat(list(f for f in frame), dim=1)
-        frame = np.clip((frame * 255 / params['rendering.rgb.max_intensity']).cpu().numpy(), 0, 255).astype(np.uint8) #######
-    if not hasattr(call_back, 'video_writer') or call_back.video_writer is None:
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        call_back.video_writer = cv2.VideoWriter(f'./out/{checkpoint_name}.mp4', fourcc, 30, (frame.shape[1], frame.shape[0]))
-    img = (frame*255).astype(np.uint8)
-    cv2.imwrite(f"./out/render.png", img)
-    call_back.video_writer.write(frame)
+    #     frame = torch.cat(list(f for f in frame), dim=1)
+    #     frame = np.clip((frame * 255 / params['rendering.rgb.max_intensity']).cpu().numpy(), 0, 255).astype(np.uint8) #######
+    # if not hasattr(call_back, 'video_writer') or call_back.video_writer is None:
+    #     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    #     call_back.video_writer = cv2.VideoWriter(f'./out/{checkpoint_name}.mp4', fourcc, 30, (frame.shape[1], frame.shape[0]))
+    # img = (frame*(256**2-1)).astype(np.uint16)
+    # cv2.imwrite(f"./out/render.png", img)
+    # call_back.video_writer.write(frame)
 
 
 
@@ -247,7 +276,10 @@ if __name__ == '__main__':
         'n_lobes': 5,
         'training': 
         {
-            'n_image_per_batch': 48,
+            'render_interval': 10,
+            'render_cols': 10,
+            'checkpoint_interval': 10,
+            'n_image_per_batch': 30,
             'lr': 1e-3,
             'compute_velocity_seperately': True,
             'n_pts_per_split': 2048,
@@ -259,7 +291,7 @@ if __name__ == '__main__':
         'sampling':
         {
             'ico_sphere_level': 6, #######
-            'T': 10,
+            'T': 15,
         },
         'rendering':
         {
@@ -268,9 +300,10 @@ if __name__ == '__main__':
                 'image_size': 100, #######
                 'blur_radius': 0.0, #######
                 'faces_per_pixel': 4, #######
-                'max_intensity': 0.15, #######   read_ing:0.09, budd_ha: 0.15, pot_2: 0.15, co_w: 0.15, bea_r:  0.2
+                'max_intensity': 1., #######   read_ing:0.09, budd_ha: 0.15, pot_2: 0.15, co_w: 0.15, bea_r:  0.2
                 'sigma': 1e-4, #######
                 'gamma': 1e-4, #######
+                'L0': 7.6496,
                 'crop': False, # Set to True if you want to render only a subregion of the image
                 'crop_ratio': 0.5, # Ratio of the image to keep when cropping
             },
@@ -286,8 +319,8 @@ if __name__ == '__main__':
         'loss':
         {
             'lambda_image': 4.0,
-            'lambda_silhouette': 1.0, #######
-            'lambda_velocity': 0.1,# 0.1,
+            'lambda_silhouette': 0.0,#1.0, #######
+            'lambda_velocity': 1.0,# 0.1,
             'alpha': 0.01,# 0.05,
             'lambda_edge': 0.5,
             'lambda_normal_consistency': 0.5,
@@ -337,4 +370,4 @@ if __name__ == '__main__':
     mesh = sample_mesh(shape_net, brdf_net, **params)#init_mesh=init_mesh, **params)
     trimesh.Trimesh( ( mesh.verts_packed().detach() @ transf[:3,:3].T + transf[:3,-1]).cpu().numpy(), mesh.faces_packed().cpu().numpy()).export(f'{checkpoint_name}.obj')
 
-    compile_video(mesh, f'{checkpoint_name}.mp4', distance=2, render_mode='image_ct', **params)
+    # compile_video(mesh, f'{checkpoint_name}.mp4', distance=2, render_mode='image_ct', **params)

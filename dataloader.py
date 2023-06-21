@@ -34,8 +34,8 @@ def load_dataset(path_str, device, max_faces_no=None):
     # light_dirs = np.loadtxt(f'{path_str}/view_{view_id:02}/light_directions.txt')#@np.diag([-1,1,1])
     # light_dirs = light_dirs.astype(np.float32)
     
-    n_images=29
-    cameras = np.load(f'{path_str}/cameras.npz')
+    n_images=30
+    cameras = np.load(f'{path_str}/cameras1.npz')
     R = torch.zeros((n_images, 3, 3), device=device)
     T = torch.zeros((n_images, 3), device=device)
     for i in range(n_images): # read camera extrinsics
@@ -48,8 +48,7 @@ def load_dataset(path_str, device, max_faces_no=None):
     K = torch.from_numpy(cameras["K"]).float().to(device)
     images = torch.from_numpy(np.stack([\
                      cv2.imread(f'{path_str}/dataset/render_{j:02}.png', -1)[...,::-1].astype(np.float32) \
-                for j in range(n_images)], axis=0)).to(device)[...,:3]/255
-
+                for j in range(n_images)], axis=0)).to(device)[...,:3]/(256**2-1)
     # imgs = imgs / lights_ints.reshape(lights_ints.shape[0], 1, 1, lights_ints.shape[1]) / 65535
 
     masks = torch.sum(images, dim=-1, keepdim=True)
