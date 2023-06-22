@@ -95,8 +95,8 @@ def train(images, silhouettes, rotations, translations, shape_net, brdf_net, opt
             img_grid_height = int(n_images / col_count * image_size)
             gt_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
             prd_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
-            gt_sil_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
-            prd_sil_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
+            gt_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
+            prd_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
         for i in batch_idx:
 
             gt_image, gt_silhouette = images[i:i+1], silhouettes[i:i+1]
@@ -149,16 +149,15 @@ def train(images, silhouettes, rotations, translations, shape_net, brdf_net, opt
                         faces_per_pixel=params['rendering.silhouette.faces_per_pixel'], 
                         device=device, background_colors=None, light_poses=None, materials=None, camera_settings=camera_settings_silhoutte,
                         sigma=params['rendering.silhouette.sigma'], gamma=params['rendering.silhouette.gamma'])
-                
-
-                if(is_render_checkpoint):
-                    img = (prd_silhouette*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
-                    prd_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
-                    img = (gt_silhouette*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
-                    gt_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
 
                 prd_silhouette = torch.unsqueeze(prd_silhouette,0)
                 gt_silhouette = torch.unsqueeze(gt_silhouette,3)
+                if(is_render_checkpoint):
+                    img = (prd_silhouette[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+                    prd_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+                    img = (gt_silhouette[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+                    gt_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+
                 loss_tmp = mse(gt_silhouette.cuda(), prd_silhouette) / params['training.n_image_per_batch']
                 (loss_tmp * params['loss.lambda_silhouette']).backward(retain_graph=True)
                 loss_silhouette += loss_tmp.detach()
@@ -289,7 +288,7 @@ if __name__ == '__main__':
         'n_lobes': 5,
         'training': 
         {
-            'render_interval': 10,
+            'render_interval': 1,
             'render_cols': 10,
             'checkpoint_interval': 10,
             'n_image_per_batch': 30,
@@ -297,7 +296,7 @@ if __name__ == '__main__':
             'compute_velocity_seperately': True,
             'n_pts_per_split': 2048,
             'sampling_lvl_for_vel_loss': 5,
-            'n_iterations': 1, #######
+            'n_iterations': 1000, #######
             'rand_seed': 0,
             'vertex_grad_clip': 0.1,
         },
@@ -332,9 +331,9 @@ if __name__ == '__main__':
         },
         'loss':
         {
-            'lambda_image': 4.0,
-            'lambda_silhouette': 0.0,#1.0, #######
-            'lambda_velocity': 1.0,# 0.1,
+            'lambda_image': 0.0,
+            'lambda_silhouette': 1.0,#1.0, #######
+            'lambda_velocity': 0.0,# 0.1,
             'alpha': 0.01,# 0.05,
             'lambda_edge': 0.5,
             'lambda_normal_consistency': 0.5,
