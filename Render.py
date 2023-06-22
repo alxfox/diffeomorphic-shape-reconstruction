@@ -36,18 +36,21 @@ def render_mesh(mesh, modes, rotations, translations, image_size, blur_radius, f
             max_faces_per_bin=50000
         )
     rasterizer = MeshRasterizer(cameras=cameras, raster_settings=raster_settings)
-
-
-
     bgc = (0,0,0) # background color is black
     blend_params = BlendParams(sigma=sigma, gamma=gamma, background_color=bgc)
-    shader = SoftCookTorranceShader(device=device, cameras=cameras, blend_params=blend_params)
-
     t = (-torch.inverse(rotations[0]) @ translations[0])[None] # translation in camera space
     
-    lights = PointLights(device=device, location=t,diffuse_color=torch.tensor([[L0,L0,L0]], device=device))
-    fragments = rasterizer(mesh, R=rotations, T=t)
-    images = shader(fragments, mesh, lights=lights)
+    if modes == 'image_ct':
+        shader = SoftCookTorranceShader(device=device, cameras=cameras, blend_params=blend_params)      
+        lights = PointLights(device=device, location=t,diffuse_color=torch.tensor([[L0,L0,L0]], device=device))
+        fragments = rasterizer(mesh, R=rotations, T=t)
+        images = shader(fragments, mesh, lights=lights)
+    elif modes == 'silhouette':
+        shader = SoftSilhouetteShader(blend_params=blend_params)       
+        fragments = rasterizer(mesh, R=rotations, T=t)
+        images = shader(fragments, mesh)
+        images= images[0,...,3:4]
+
     return images
 
  

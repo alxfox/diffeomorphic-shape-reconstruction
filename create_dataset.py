@@ -7,13 +7,15 @@ import imageio
 from Render import render_mesh
 from utils import r2R, dotty, save_images, pytorch_camera, Meshes
 import cv2
+import os
+import pickle
 
 
 if __name__ == '__main__':
     device = torch.device("cuda:0")
     verts, faces = load_ply("data/mesh.ply")
     # verts, faces = load_ply("mesh_noNormals.ply")
-    viewpoints = np.load('data/cameras2.npz')
+    viewpoints = np.load('data/cameras1.npz')
    
     verts_rgb = torch.ones_like(verts)[None]  # color the mesh white
     mesh = Meshes(verts=[verts.to(device)], faces=[faces.to(device)], vert_textures=verts_rgb.to(device))
@@ -34,6 +36,15 @@ if __name__ == '__main__':
             'sigma': 1e-4, #######
             'gamma': 1e-4, #######
             'L0': 10
+        },
+        'silhouette':
+        {
+            'image_size': 100, #######
+            'blur_radius': 0.1,#np.log(1. / 1e-4 - 1.) * 1e-4
+            'faces_per_pixel': 100,
+            'sigma': 1e-4,
+            'gamma': 1e-4,
+            'L0':None
         }
     }})
 
@@ -52,6 +63,7 @@ if __name__ == '__main__':
     camera_settings = pytorch_camera(params['rendering.rgb.image_size'], torch.from_numpy(viewpoints["K"]).float().to(device))
 
     images = []
+    silhouettes =[]
     max_val = 0
     for i in range(n_images):
         prd_image = render_mesh(mesh, 
@@ -67,14 +79,37 @@ if __name__ == '__main__':
         prd_image = prd_image[...,:3]
         images.append(prd_image)
         max_val = max(max_val,prd_image.max())
+        sh_image = render_mesh(mesh, 
+                        modes='silhouette', #######
+                        rotations=R[i:i+1], 
+                        translations=T[i:i+1], 
+                        image_size=params['rendering.silhouette.image_size'], 
+                        blur_radius=params['rendering.silhouette.blur_radius'], 
+                        faces_per_pixel=params['rendering.silhouette.faces_per_pixel'], 
+                        L0=params['rendering.silhouette.L0'],
+                        device=device, background_colors=None, light_poses=None, materials=None, camera_settings=camera_settings,
+                        sigma=params['rendering.silhouette.sigma'], gamma=params['rendering.silhouette.gamma'])
+        silhouettes.append(sh_image)
 
     new_L0 = params['rendering.rgb.L0']/max_val
+
+    f = open('store.pckl', 'wb')
+    pickle.dump(new_L0, f)
+    f.close()
+
+    path = './data/dataset'
+    if os.path.exists(path)== False:
+        os.mkdir(path)
+    
     for i in range(n_images):
     # images are saved to out as a png    
         img = (images[i]/max_val*((256**2)-1)).cpu().numpy().astype(np.uint16)[0]
-        # writer.append_data(img)
+        imgsh = (silhouettes[i]*((256**2)-1)).cpu().numpy().astype(np.uint16)
+        #writer.append_data(img)
+        
         cv2.imwrite(f"./data/dataset/render_{i:02}.png", img)
-
+        cv2.imwrite(f"./data/dataset/mask_{i:02}.png", imgsh)
+    
     
         
     

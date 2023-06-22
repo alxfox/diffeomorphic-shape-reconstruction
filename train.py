@@ -22,6 +22,7 @@ from utils import dotty, sample_lights_from_equirectangular_image, save_images, 
 import cv2
 import os
 from diligent import diligent_eval_chamfer
+import pickle
 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
 
@@ -138,26 +139,32 @@ def train(images, silhouettes, rotations, translations, shape_net, brdf_net, opt
                 loss_image += loss_tmp.detach()
 
             if params['loss.lambda_silhouette'] != 0:
-                prd_silhouette = torch.sum(prd_image, dim=-1, keepdim=True)
-                prd_silhouette[prd_silhouette>0] = 1
-                # prd_silhouette = render_mesh(mesh, 
-                #         modes='silhouette', 
-                #         rotations=rotations[i:i+1], 
-                #         translations=translations[i:i+1], 
-                #         image_size=params['rendering.silhouette.image_size'], 
-                #         blur_radius=params['rendering.silhouette.blur_radius'], 
-                #         faces_per_pixel=params['rendering.silhouette.faces_per_pixel'], 
-                #         device=device, background_colors=None, light_poses=None, materials=None, camera_settings=camera_settings_silhoutte,
-                #         sigma=params['rendering.silhouette.sigma'], gamma=params['rendering.silhouette.gamma'])
+                prd_silhouette = render_mesh(mesh, 
+                        modes='silhouette', 
+                        L0=params['rendering.silhouette.L0'],
+                        rotations=rotations[i:i+1], 
+                        translations=translations[i:i+1], 
+                        image_size=params['rendering.silhouette.image_size'], 
+                        blur_radius=params['rendering.silhouette.blur_radius'], 
+                        faces_per_pixel=params['rendering.silhouette.faces_per_pixel'], 
+                        device=device, background_colors=None, light_poses=None, materials=None, camera_settings=camera_settings_silhoutte,
+                        sigma=params['rendering.silhouette.sigma'], gamma=params['rendering.silhouette.gamma'])
                 
+
                 if(is_render_checkpoint):
-                    img = (prd_silhouette[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+                    img = (prd_silhouette*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
                     prd_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
-                    img = (gt_silhouette[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+                    img = (gt_silhouette*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
                     gt_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+
+                prd_silhouette = torch.unsqueeze(prd_silhouette,0)
+                gt_silhouette = torch.unsqueeze(gt_silhouette,3)
                 loss_tmp = mse(gt_silhouette.cuda(), prd_silhouette) / params['training.n_image_per_batch']
                 (loss_tmp * params['loss.lambda_silhouette']).backward(retain_graph=True)
                 loss_silhouette += loss_tmp.detach()
+
+
+
         if (is_render_checkpoint):
             cv2.imwrite(f"./out/prd_" + str(N_IT) + ".png", prd_grid)
             cv2.imwrite(f"./out/gt_" + str(N_IT) + ".png", gt_grid)
@@ -220,6 +227,9 @@ def train(images, silhouettes, rotations, translations, shape_net, brdf_net, opt
         mesh, losses = closure()
         if(N_IT % params['training.checkpoint_interval'] == 0):
             with torch.no_grad():
+                path = './out/'
+                if os.path.exists(path)== False:
+                    os.mkdir(path)
                 save_models(f'./out/{checkpoint_name}_{N_IT}', brdf_net=brdf_net, shape_net=shape_net, 
                             optimizer=optimizer, meta=dict(loss=losses[0], params=dict(params)))
         optimizer.step()
@@ -228,7 +238,7 @@ def train(images, silhouettes, rotations, translations, shape_net, brdf_net, opt
         if call_back is not None:
             call_back(mesh, losses[0])
 
-    call_back(end=True)
+    #call_back(end=True)
     return losses
 
 def call_back(mesh=None, loss=None, end=False):
@@ -270,6 +280,9 @@ def call_back(mesh=None, loss=None, end=False):
 
 
 if __name__ == '__main__':
+    f = open('store.pckl', 'rb')
+    L0 = pickle.load(f)
+    f.close()
 
     params = dotty({
         'device': torch.device('cuda:0'),
@@ -284,7 +297,7 @@ if __name__ == '__main__':
             'compute_velocity_seperately': True,
             'n_pts_per_split': 2048,
             'sampling_lvl_for_vel_loss': 5,
-            'n_iterations': 4500, #######
+            'n_iterations': 1, #######
             'rand_seed': 0,
             'vertex_grad_clip': 0.1,
         },
@@ -303,18 +316,19 @@ if __name__ == '__main__':
                 'max_intensity': 1., #######   read_ing:0.09, budd_ha: 0.15, pot_2: 0.15, co_w: 0.15, bea_r:  0.2
                 'sigma': 1e-4, #######
                 'gamma': 1e-4, #######
-                'L0': 7.6496,
+                'L0': L0,
                 'crop': False, # Set to True if you want to render only a subregion of the image
                 'crop_ratio': 0.5, # Ratio of the image to keep when cropping
             },
-            # 'silhouette':
-            # {
-            #     'image_size': 100, #######
-            #     'blur_radius': 0.1, #######
-            #     'faces_per_pixel': 100,
-            #     'sigma': 1e-4,
-            #     'gamma': 1e-4,
-            # },
+            'silhouette':
+            {
+                'image_size': 100, #######
+                'blur_radius': 0.1, #######
+                'faces_per_pixel': 100,
+                'sigma': 1e-4,
+                'gamma': 1e-4,
+                'L0': None
+            },
         },
         'loss':
         {
@@ -355,19 +369,20 @@ if __name__ == '__main__':
                         ), constant_fresnel=True).to(device)
 
     optimizer = torch.optim.Adam(list(shape_net.parameters())+list(brdf_net.parameters()), lr=params['training.lr'])
-    # camera_settings_silhoutte = pytorch_camera(params['rendering.silhouette.image_size'], K)
+    camera_settings_silhoutte = pytorch_camera(params['rendering.silhouette.image_size'], K)
     camera_settings = pytorch_camera(params['rendering.rgb.image_size'], K)
     train(images, silhouettes, R, T, shape_net, brdf_net, optimizer, params['training.n_iterations'],  
             call_back=call_back, 
             light_dirs=None,
             camera_settings = camera_settings,
-            # camera_settings_silhoutte=camera_settings_silhoutte,
+            camera_settings_silhoutte=camera_settings_silhoutte,
             **params)
 
-    load_models(f'{checkpoint_name}', brdf_net=brdf_net, shape_net=shape_net, 
+    N_IT =  params['training.n_iterations']-1
+    load_models(f'./out/{checkpoint_name}_{N_IT}', brdf_net=brdf_net, shape_net=shape_net, 
                     optimizer=optimizer)
     
     mesh = sample_mesh(shape_net, brdf_net, **params)#init_mesh=init_mesh, **params)
-    trimesh.Trimesh( ( mesh.verts_packed().detach() @ transf[:3,:3].T + transf[:3,-1]).cpu().numpy(), mesh.faces_packed().cpu().numpy()).export(f'{checkpoint_name}.obj')
+    trimesh.Trimesh( ( mesh.verts_packed().detach()).cpu().numpy(), mesh.faces_packed().cpu().numpy()).export(f'{checkpoint_name}.obj')
 
     # compile_video(mesh, f'{checkpoint_name}.mp4', distance=2, render_mode='image_ct', **params)
