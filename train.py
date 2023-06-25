@@ -361,7 +361,7 @@ if __name__ == '__main__':
     checkpoint_name = 'checkpoint' #######  'diligent_reading'
     
     from dataloader import load_dataset
-    images, silhouettes, R, T, K, transf = load_dataset('data', device=device)
+    images, silhouettes, R, T, K, transf = load_dataset('data', n_images=params['training.n_image_per_batch'], device=device)
     
     images = images.cpu()
 
