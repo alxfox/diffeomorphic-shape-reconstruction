@@ -1,7 +1,5 @@
 import os
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
-
-
 import pytorch3d
 import torch
 import numpy as np
@@ -29,6 +27,7 @@ os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
 @torch.no_grad()
 def sample_mesh(shape_net, brdf_net, init_mesh=None, normal_net=None, **params):
     params = dotty(params)
+
     if init_mesh is None:
         init_mesh = rand_ico_sphere(params['sampling.ico_sphere_level'], device=device)
             
@@ -58,10 +57,10 @@ def train(images, silhouettes, rotations, translations, shape_net, brdf_net, opt
     null_init = init_mesh is None
 
     def closure():
-        #################################
-        ## sample mesh from neural nets
+        # sample mesh from neural nets
         is_render_checkpoint = N_IT % params['training.render_interval'] == 0
         nonlocal init_mesh
+
         if null_init:
             init_mesh = rand_ico_sphere(params['sampling.ico_sphere_level'], device=device)
         s = init_mesh.verts_packed()
@@ -80,25 +79,26 @@ def train(images, silhouettes, rotations, translations, shape_net, brdf_net, opt
 
         faces = init_mesh.faces_packed()
 
-
         mesh = Meshes(verts=[x], faces=[faces], vert_textures=[theta_x])
 
-        #################################
-        ## render images with mesh
-        ## and compute losses
+        # render images with mesh and compute losses
         image_size=params['rendering.rgb.image_size']
         batch_idx = torch.randperm(n_images)[:params['training.n_image_per_batch']]
         loss_image, loss_silhouette, loss_velocity = 0, 0, 0
+
         if(is_render_checkpoint):
             col_count = params['training.render_cols']
+
             img_grid_width = int(col_count * image_size)
             img_grid_height = int(n_images / col_count * image_size)
+
             gt_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
             prd_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
+
             gt_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
             prd_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
-        for i in batch_idx:
 
+        for i in batch_idx:
             gt_image, gt_silhouette = images[i:i+1], silhouettes[i:i+1]
 
             light_pose = None
@@ -122,6 +122,7 @@ def train(images, silhouettes, rotations, translations, shape_net, brdf_net, opt
                     faces_per_pixel=params['rendering.rgb.faces_per_pixel'], 
                     device=device, background_colors=None, light_poses=light_pose, materials=None, camera_settings=camera_settings,
                     sigma=params['rendering.rgb.sigma'], gamma=params['rendering.rgb.gamma'])[...,:3]
+            
             if(is_render_checkpoint):
                 grid_x_start = i.item() // col_count * image_size
                 grid_x_end = grid_x_start + image_size
@@ -130,12 +131,16 @@ def train(images, silhouettes, rotations, translations, shape_net, brdf_net, opt
 
                 img = (prd_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
                 prd_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+
                 img = (gt_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
                 gt_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+            
             if params['loss.lambda_image'] != 0:
                 max_intensity = params['rendering.rgb.max_intensity'] #* (np.random.rand()+1)
+
                 loss_tmp = clipped_mae(gt_image.cuda().clamp_max(max_intensity), prd_image, max_intensity) / params['training.n_image_per_batch']
                 (loss_tmp * params['loss.lambda_image']).backward(retain_graph=True)
+
                 loss_image += loss_tmp.detach()
 
             if params['loss.lambda_silhouette'] != 0:
@@ -152,14 +157,17 @@ def train(images, silhouettes, rotations, translations, shape_net, brdf_net, opt
 
                 prd_silhouette = torch.unsqueeze(prd_silhouette,0)
                 gt_silhouette = torch.unsqueeze(gt_silhouette,3)
+
                 if(is_render_checkpoint):
                     img = (prd_silhouette[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
                     prd_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+
                     img = (gt_silhouette[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
                     gt_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
 
                 loss_tmp = mse(gt_silhouette.cuda(), prd_silhouette) / params['training.n_image_per_batch']
                 (loss_tmp * params['loss.lambda_silhouette']).backward(retain_graph=True)
+
                 loss_silhouette += loss_tmp.detach()
 
 
@@ -167,23 +175,29 @@ def train(images, silhouettes, rotations, translations, shape_net, brdf_net, opt
         if (is_render_checkpoint):
             cv2.imwrite(f"./out/prd_" + str(N_IT) + ".png", prd_grid)
             cv2.imwrite(f"./out/gt_" + str(N_IT) + ".png", gt_grid)
+
             if(params['loss.lambda_silhouette'] != 0):
                 cv2.imwrite(f"./out/prd_sil_" + str(N_IT) + ".png", prd_sil_grid)
                 cv2.imwrite(f"./out/gt_sil_" + str(N_IT) + ".png", gt_sil_grid)
+        
         if params['loss.lambda_velocity'] == 0:
             pass
         elif (params['loss.alpha'] == 0) or (not params['training.compute_velocity_seperately']):
             loss_tmp = velocity_loss(v_arr, d2v_d2s_arr, params['loss.alpha'])
             (loss_tmp * params['loss.lambda_velocity']).backward(retain_graph=True)
+
             loss_velocity = loss_tmp.detach()
         else:
             ico_sphere = rand_ico_sphere(params['training.sampling_lvl_for_vel_loss'], device=device)
+
             if init_mesh is not None:
                 n_verts = ico_sphere.verts_packed().shape[0]
                 s = pytorch3d.ops.sample_points_from_meshes(init_mesh, n_verts).reshape(n_verts, 3)
             else:
                 s = ico_sphere.verts_packed()
+            
             n_pts_total = s.shape[0]
+
             for _s in torch.split(s, params['training.n_pts_per_split'], dim=0):
                 n_pts = _s.shape[0]
                 _x_arr, _v_arr, _dv_ds_arr, _d2v_d2s_arr = shape_net(_s, 2)
@@ -209,7 +223,6 @@ def train(images, silhouettes, rotations, translations, shape_net, brdf_net, opt
         else:
             loss_laplacian_smoothing = 0
 
-
         loss =  loss_image * params['loss.lambda_image'] + \
                 loss_silhouette * params['loss.lambda_silhouette'] + \
                 loss_velocity * params['loss.lambda_velocity']  + \
@@ -224,6 +237,7 @@ def train(images, silhouettes, rotations, translations, shape_net, brdf_net, opt
     for N_IT in pbar:
         optimizer.zero_grad()
         mesh, losses = closure()
+
         if(N_IT % params['training.checkpoint_interval'] == 0):
             with torch.no_grad():
                 path = './out/'
@@ -231,6 +245,7 @@ def train(images, silhouettes, rotations, translations, shape_net, brdf_net, opt
                     os.mkdir(path)
                 save_models(f'./out/{checkpoint_name}_{N_IT}', brdf_net=brdf_net, shape_net=shape_net, 
                             optimizer=optimizer, meta=dict(loss=losses[0], params=dict(params)))
+        
         optimizer.step()
         pbar.set_description('|'.join(f'{l:.2e}' for l in losses).replace('e', '').replace('|', ' || ', 1))
 
@@ -368,8 +383,11 @@ if __name__ == '__main__':
                         ), constant_fresnel=True).to(device)
 
     optimizer = torch.optim.Adam(list(shape_net.parameters())+list(brdf_net.parameters()), lr=params['training.lr'])
+
     camera_settings_silhoutte = pytorch_camera(params['rendering.silhouette.image_size'], K)
     camera_settings = pytorch_camera(params['rendering.rgb.image_size'], K)
+
+    # Start training
     train(images, silhouettes, R, T, shape_net, brdf_net, optimizer, params['training.n_iterations'],  
             call_back=call_back, 
             light_dirs=None,
