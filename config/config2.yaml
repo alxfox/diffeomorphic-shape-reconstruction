@@ -1,4 +1,4 @@
-name: both_losses
+name: sil_loss
 n_lobes: 5
 training: 
     render_interval: 1                  # interval at which the current batch should be rendered to a file
@@ -33,7 +33,7 @@ rendering:
         sigma: 0.0001
         gamma: 0.0001
 loss:   # loss weights
-    lambda_image: 2.0
+    lambda_image: 0.0
     lambda_silhouette: 1.0 #1.0 #######
     lambda_velocity: 0.0 # 0.1
     alpha: 0.01 # 0.05
