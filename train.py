@@ -237,7 +237,7 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
     for N_IT in pbar:
         optimizer.zero_grad()
         mesh, losses = closure()
-        if(N_IT % config['training']['checkpoint_interval'] == 0):
+        if(N_IT % config['training']['checkpoint_interval'] == 0 or N_IT == n_iterations-1):
             with torch.no_grad():
                 save_models(f'{config["experiment_path"]}/{checkpoint_name}_{N_IT}', brdf_net=brdf_net, shape_net=shape_net, 
                             optimizer=optimizer, meta=dict(loss=losses[0], params=config))
