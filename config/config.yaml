@@ -8,12 +8,12 @@ training:
     compute_velocity_seperately: True   
     n_pts_per_split: 2048
     sampling_lvl_for_vel_loss: 5
-    n_iterations: 1000
+    n_iterations: 2000
     rand_seed: 0
     vertex_grad_clip: 0.1
 sampling:
     ico_sphere_level: 6
-    T: 15
+    T: 20
 rendering:
     rgb: 
         image_size: 100                 # image resolution
