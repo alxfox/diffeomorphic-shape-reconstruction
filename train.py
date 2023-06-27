@@ -291,7 +291,8 @@ def call_back(mesh=None, loss=None, end=False):
     # call_back.video_writer.write(frame)
 
 if __name__ == '__main__':
-    config_list = [join('./config',f) for f in listdir('./config') if isfile(join('./config', f))]
+    # config_list = [join('./config',f) for f in listdir('./config') if isfile(join('./config', f))]
+    config_list = ['./config/config3.yml']
     print("Configs to run: ", config_list)
 
     for conf in config_list:
@@ -299,7 +300,7 @@ if __name__ == '__main__':
         if(not config.get('experiment_path')):
             name = config.get('name')
             config['experiment_path'] = './out/' + (name + "_" if name else "") + str(uuid.uuid4())
-        print("saving to " + config['experiment_path'])
+        print("Saving the results to " + config['experiment_path'])
 
         try:
             os.makedirs(config['experiment_path'])
@@ -344,12 +345,16 @@ if __name__ == '__main__':
         camera_settings_silhouette = pytorch_camera(config['rendering']['silhouette']['image_size'], K)
         camera_settings = pytorch_camera(config['rendering']['rgb']['image_size'], K)
 
+        print("Starting training...")
+
         train(config, device, images, silhouettes, R, T, shape_net, brdf_net, optimizer, config['training']['n_iterations'],  
                 call_back=call_back, 
                 light_dirs=None,
                 camera_settings = camera_settings,
                 camera_settings_silhouette=camera_settings_silhouette
                 )
+        
+        print("Training completed!")
         
         # Load the checkpoint model
         N_IT =  config['training']['n_iterations']-1
