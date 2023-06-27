@@ -292,7 +292,8 @@ def call_back(mesh=None, loss=None, end=False):
 
 if __name__ == '__main__':
     config_list = [join('./config',f) for f in listdir('./config') if isfile(join('./config', f))]
-    print(config_list)
+    print("Configs to run: ", config_list)
+
     for conf in config_list:
         config = yaml.safe_load(open(conf))
         if(not config.get('experiment_path')):
@@ -301,7 +302,7 @@ if __name__ == '__main__':
         print("saving to " + config['experiment_path'])
 
         try:
-            os.mkdir(config['experiment_path'])
+            os.makedirs(config['experiment_path'])
         except OSError as error:
             print(error)
 
