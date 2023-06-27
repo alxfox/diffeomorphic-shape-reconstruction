@@ -61,6 +61,7 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
         ## sample mesh from neural nets
         is_render_checkpoint = N_IT % config['training']['render_interval'] == 0
         nonlocal init_mesh
+
         if null_init:
             init_mesh = rand_ico_sphere(config['sampling']['ico_sphere_level'], device=device)
         s = init_mesh.verts_packed()
@@ -79,7 +80,6 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
 
         faces = init_mesh.faces_packed()
 
-
         mesh = Meshes(verts=[x], faces=[faces], vert_textures=[theta_x])
         # verts, faces = load_ply("data/mesh.ply")
         # viewpoints = np.load('data/cameras1.npz')
@@ -92,16 +92,19 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
         image_size=config['rendering']['rgb']['image_size']
         batch_idx = torch.randperm(n_images)[:config['training']['n_image_per_batch']]
         loss_image, loss_silhouette, loss_velocity = 0, 0, 0
+
         if(is_render_checkpoint):
             col_count = config['training']['render_cols']
             img_grid_width = int(col_count * image_size)
             img_grid_height = int(n_images / col_count * image_size)
+
             gt_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
             prd_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
+
             gt_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
             prd_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
-        for i in batch_idx:
 
+        for i in batch_idx:
             gt_image, gt_silhouette = images[i:i+1], silhouettes[i:i+1]
 
             light_pose = None
@@ -133,11 +136,13 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
 
                 img = (prd_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
                 prd_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+
                 img = (gt_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
                 gt_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
             if config['loss']['lambda_image'] != 0:
                 max_intensity = config['rendering']['rgb']['max_intensity'] #* (np.random.rand()+1)
                 loss_tmp = clipped_mae(gt_image.cuda(), prd_image) / config['training']['n_image_per_batch']
+                # loss_tmp = clipped_mae(gt_image.cuda().clamp_max(max_intensity), prd_image, max_intensity) / config['training']['n_image_per_batch']
                 # print("loss",loss_tmp)
                 (loss_tmp * config['loss']['lambda_image']).backward(retain_graph=True)
                 loss_image += loss_tmp.detach()
@@ -156,9 +161,11 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
 
                 prd_silhouette = torch.unsqueeze(prd_silhouette,0)
                 gt_silhouette = torch.unsqueeze(gt_silhouette,3)
+
                 if(is_render_checkpoint):
                     img = (prd_silhouette[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
                     prd_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+
                     img = (gt_silhouette[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
                     gt_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
 
@@ -187,6 +194,7 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
                 s = pytorch3d.ops.sample_points_from_meshes(init_mesh, n_verts).reshape(n_verts, 3)
             else:
                 s = ico_sphere.verts_packed()
+            
             n_pts_total = s.shape[0]
             for _s in torch.split(s, config['training']['n_pts_per_split'], dim=0):
                 n_pts = _s.shape[0]
@@ -304,7 +312,7 @@ if __name__ == '__main__':
     checkpoint_name = 'checkpoint' #######  'diligent_reading'
     
     from dataloader import load_dataset
-    images, silhouettes, R, T, K, transf = load_dataset('data', device=device)
+    images, silhouettes, R, T, K, transf = load_dataset('data', n_images=config['training']['n_image_per_batch'], device=device)
     
     images = images.cpu()
 
