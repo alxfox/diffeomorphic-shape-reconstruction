@@ -10,7 +10,8 @@ from Loss import velocity_loss, clipped_mae, chamfer_3d
 from torch.nn.functional import mse_loss as mse
 from Render import render_mesh
 from Model import MLP, PositionEncoding, ResNet, Sequential, ShapeNet, BRDFNet
-
+from os import listdir
+from os.path import isfile, join
 from utils import manual_seed, rand_ico_sphere, save_models, load_models
 from Meshes import Meshes
 from tqdm import tqdm
@@ -288,66 +289,69 @@ def call_back(mesh=None, loss=None, end=False):
 
 
 if __name__ == '__main__':
-    
-    config = yaml.safe_load(open("./config/config.yaml"))
-    if(not config.get('experiment_path')):
-        config['experiment_path'] = './out/' + str(uuid.uuid4())
-    print("saving to " + config['experiment_path'])
-    try:
-        os.mkdir(config['experiment_path'])
-    except OSError as error:
-        print(error)
+    config_list = [join('./config',f) for f in listdir('./config') if isfile(join('./config', f))]
+    print(config_list)
+    for conf in config_list:
+        config = yaml.safe_load(open(conf))
+        if(not config.get('experiment_path')):
+            name = config.get('name')
+            config['experiment_path'] = './out/' + (name + "_" if name else "") + str(uuid.uuid4())
+        print("saving to " + config['experiment_path'])
+        try:
+            os.mkdir(config['experiment_path'])
+        except OSError as error:
+            print(error)
 
-    if(config['rendering']['rgb']['L0']=='None'):
-        f = open('store.pckl', 'rb')
-        config['rendering']['rgb']['L0'] = pickle.load(f).item()
-        f.close()
+        if(config['rendering']['rgb']['L0']=='None'):
+            f = open('store.pckl', 'rb')
+            config['rendering']['rgb']['L0'] = pickle.load(f).item()
+            f.close()
 
-    print("using config:\n", config)
-    with open(f'{config["experiment_path"]}/config.yaml', 'w') as file:
-        yaml.dump(config, file, indent=4, sort_keys=False)
+        print("using config:\n", config)
+        with open(f'{config["experiment_path"]}/config.yaml', 'w') as file:
+            yaml.dump(config, file, indent=4, sort_keys=False)
 
-    device = torch.device('cuda:0')
-    manual_seed(config['training']['rand_seed'])
-    checkpoint_name = 'checkpoint' #######  'diligent_reading'
-    
-    from dataloader import load_dataset
-    images, silhouettes, R, T, K, transf = load_dataset('data', n_images=config['training']['n_image_per_batch'], device=device)
-    
-    images = images.cpu()
+        device = torch.device('cuda:0')
+        manual_seed(config['training']['rand_seed'])
+        checkpoint_name = 'checkpoint' #######  'diligent_reading'
+        
+        from dataloader import load_dataset
+        images, silhouettes, R, T, K, transf = load_dataset('data', n_images=config['training']['n_image_per_batch'], device=device)
+        
+        images = images.cpu()
 
-    # r, t = P_matrix_to_rot_trans_vectors(P)
-
-
-    pos_encode_weight = torch.cat(tuple(torch.eye(3) * (1.5**i) for i in range(0,14,1)), dim=0) #######
-    pos_encode_out_weight = torch.cat(tuple( torch.tensor([1.0/(1.3**i)]*3) for i in range(0,14,1)), dim=0) #######
-    
-    shape_net = ShapeNet(velocity_mlp= Sequential(
-                        PositionEncoding(pos_encode_weight, pos_encode_out_weight),
-                        MLP(pos_encode_weight.shape[0]*2, [256,256,256,3], ['lrelu','lrelu','lrelu','tanh']),  
-                        ), T=config['sampling']['T']).to(device)
+        # r, t = P_matrix_to_rot_trans_vectors(P)
 
 
-    brdf_net = BRDFNet( Sequential(
-                        PositionEncoding(pos_encode_weight, pos_encode_out_weight),  
-                        MLP(pos_encode_weight.shape[0]*2, [256]*5+[config['n_lobes']*3+3], ['lrelu']*5+['none']),    
-                        ), constant_fresnel=True).to(device)
+        pos_encode_weight = torch.cat(tuple(torch.eye(3) * (1.5**i) for i in range(0,14,1)), dim=0) #######
+        pos_encode_out_weight = torch.cat(tuple( torch.tensor([1.0/(1.3**i)]*3) for i in range(0,14,1)), dim=0) #######
+        
+        shape_net = ShapeNet(velocity_mlp= Sequential(
+                            PositionEncoding(pos_encode_weight, pos_encode_out_weight),
+                            MLP(pos_encode_weight.shape[0]*2, [256,256,256,3], ['lrelu','lrelu','lrelu','tanh']),  
+                            ), T=config['sampling']['T']).to(device)
 
-    optimizer = torch.optim.Adam(list(shape_net.parameters())+list(brdf_net.parameters()), lr=config['training']['lr'])
-    camera_settings_silhouette = pytorch_camera(config['rendering']['silhouette']['image_size'], K)
-    camera_settings = pytorch_camera(config['rendering']['rgb']['image_size'], K)
-    train(config, device, images, silhouettes, R, T, shape_net, brdf_net, optimizer, config['training']['n_iterations'],  
-            call_back=call_back, 
-            light_dirs=None,
-            camera_settings = camera_settings,
-            camera_settings_silhouette=camera_settings_silhouette
-            )
 
-    N_IT =  config['training']['n_iterations']-1
-    load_models(f'{config["experiment_path"]}/{checkpoint_name}_{N_IT}', brdf_net=brdf_net, shape_net=shape_net, 
-                    optimizer=optimizer)
-    
-    mesh = sample_mesh(config, shape_net, brdf_net)#init_mesh=init_mesh, **params)
-    trimesh.Trimesh( ( mesh.verts_packed().detach()).cpu().numpy(), mesh.faces_packed().cpu().numpy()).export(f'{config["experiment_path"]}/{checkpoint_name}.obj')
+        brdf_net = BRDFNet( Sequential(
+                            PositionEncoding(pos_encode_weight, pos_encode_out_weight),  
+                            MLP(pos_encode_weight.shape[0]*2, [256]*5+[config['n_lobes']*3+3], ['lrelu']*5+['none']),    
+                            ), constant_fresnel=True).to(device)
 
-    # compile_video(mesh, f'{checkpoint_name}.mp4', distance=2, render_mode='image_ct', **params)
+        optimizer = torch.optim.Adam(list(shape_net.parameters())+list(brdf_net.parameters()), lr=config['training']['lr'])
+        camera_settings_silhouette = pytorch_camera(config['rendering']['silhouette']['image_size'], K)
+        camera_settings = pytorch_camera(config['rendering']['rgb']['image_size'], K)
+        train(config, device, images, silhouettes, R, T, shape_net, brdf_net, optimizer, config['training']['n_iterations'],  
+                call_back=call_back, 
+                light_dirs=None,
+                camera_settings = camera_settings,
+                camera_settings_silhouette=camera_settings_silhouette
+                )
+
+        N_IT =  config['training']['n_iterations']-1
+        load_models(f'{config["experiment_path"]}/{checkpoint_name}_{N_IT}', brdf_net=brdf_net, shape_net=shape_net, 
+                        optimizer=optimizer)
+        
+        mesh = sample_mesh(config, shape_net, brdf_net)#init_mesh=init_mesh, **params)
+        trimesh.Trimesh( ( mesh.verts_packed().detach()).cpu().numpy(), mesh.faces_packed().cpu().numpy()).export(f'{config["experiment_path"]}/{checkpoint_name}.obj')
+
+        # compile_video(mesh, f'{checkpoint_name}.mp4', distance=2, render_mode='image_ct', **params)
