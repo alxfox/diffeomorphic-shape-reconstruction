@@ -2,3 +2,7 @@ DiLiGenT-MV/
 __pycache__/
 out/
 data/dataset
+.gitignore
+store.pckl
+requirements.txt
+*.sbatch
