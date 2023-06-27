@@ -291,8 +291,8 @@ def call_back(mesh=None, loss=None, end=False):
     # call_back.video_writer.write(frame)
 
 if __name__ == '__main__':
-    # config_list = [join('./config',f) for f in listdir('./config') if isfile(join('./config', f))]
-    config_list = ['./config/config3.yml']
+    config_list = [join('./config',f) for f in listdir('./config') if isfile(join('./config', f))]
+
     print("Configs to run: ", config_list)
 
     for conf in config_list:
@@ -300,7 +300,7 @@ if __name__ == '__main__':
         if(not config.get('experiment_path')):
             name = config.get('name')
             config['experiment_path'] = './out/' + (name + "_" if name else "") + str(uuid.uuid4())
-        print("Saving the results to " + config['experiment_path'])
+        print("Saving the results to " + config['experiment_path'] + "\n")
 
         try:
             os.makedirs(config['experiment_path'])
@@ -312,7 +312,7 @@ if __name__ == '__main__':
             config['rendering']['rgb']['L0'] = pickle.load(f).item()
             f.close()
 
-        print("using config:\n", config)
+        print("using config:\n", config, "\n")
         with open(f'{config["experiment_path"]}/config.yaml', 'w') as file:
             yaml.dump(config, file, indent=4, sort_keys=False)
 
@@ -335,7 +335,7 @@ if __name__ == '__main__':
                             MLP(pos_encode_weight.shape[0]*2, [256,256,256,3], ['lrelu','lrelu','lrelu','tanh']),  
                             ), T=config['sampling']['T']).to(device)
 
-        brdf_net = BRDFNet( Sequential(
+        brdf_net = BRDFNet(Sequential(
                             PositionEncoding(pos_encode_weight, pos_encode_out_weight),  
                             MLP(pos_encode_weight.shape[0]*2, [256]*5+[config['n_lobes']*3+3], ['lrelu']*5+['none']),    
                             ), constant_fresnel=True).to(device)
