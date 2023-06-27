@@ -129,6 +129,7 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
                     faces_per_pixel=config['rendering']['rgb']['faces_per_pixel'], 
                     device=device, background_colors=None, light_poses=light_pose, materials=None, camera_settings=camera_settings,
                     sigma=config['rendering']['rgb']['sigma'], gamma=config['rendering']['rgb']['gamma'])[...,:3]
+
             if(is_render_checkpoint):
                 grid_x_start = i.item() // col_count * image_size
                 grid_x_end = grid_x_start + image_size
@@ -140,6 +141,7 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
 
                 img = (gt_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
                 gt_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+            
             if config['loss']['lambda_image'] != 0:
                 max_intensity = config['rendering']['rgb']['max_intensity'] #* (np.random.rand()+1)
                 loss_tmp = clipped_mae(gt_image.cuda(), prd_image) / config['training']['n_image_per_batch']
@@ -174,14 +176,16 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
                 (loss_tmp * config['loss']['lambda_silhouette']).backward(retain_graph=True)
                 loss_silhouette += loss_tmp.detach()
 
-
+        if N_IT == 0:
+            cv2.imwrite(f"{config['experiment_path']}/gt.png", gt_grid)
+            if(config['loss']['lambda_silhouette'] != 0):
+                cv2.imwrite(f"{config['experiment_path']}/gt_sil.png", gt_sil_grid)
 
         if (is_render_checkpoint):
             cv2.imwrite(f"{config['experiment_path']}/prd_" + str(N_IT) + ".png", prd_grid)
-            cv2.imwrite(f"{config['experiment_path']}/gt_" + str(N_IT) + ".png", gt_grid)
             if(config['loss']['lambda_silhouette'] != 0):
                 cv2.imwrite(f"{config['experiment_path']}/prd_sil_" + str(N_IT) + ".png", prd_sil_grid)
-                cv2.imwrite(f"{config['experiment_path']}/gt_sil_" + str(N_IT) + ".png", gt_sil_grid)
+        
         if config['loss']['lambda_velocity'] == 0:
             pass
         elif (config['loss']['alpha'] == 0) or (not config['training']['compute_velocity_seperately']):
@@ -286,8 +290,6 @@ def call_back(mesh=None, loss=None, end=False):
     # cv2.imwrite(f"./out/render.png", img)
     # call_back.video_writer.write(frame)
 
-
-
 if __name__ == '__main__':
     config_list = [join('./config',f) for f in listdir('./config') if isfile(join('./config', f))]
     print(config_list)
@@ -297,6 +299,7 @@ if __name__ == '__main__':
             name = config.get('name')
             config['experiment_path'] = './out/' + (name + "_" if name else "") + str(uuid.uuid4())
         print("saving to " + config['experiment_path'])
+
         try:
             os.mkdir(config['experiment_path'])
         except OSError as error:
@@ -322,7 +325,6 @@ if __name__ == '__main__':
 
         # r, t = P_matrix_to_rot_trans_vectors(P)
 
-
         pos_encode_weight = torch.cat(tuple(torch.eye(3) * (1.5**i) for i in range(0,14,1)), dim=0) #######
         pos_encode_out_weight = torch.cat(tuple( torch.tensor([1.0/(1.3**i)]*3) for i in range(0,14,1)), dim=0) #######
         
@@ -331,27 +333,29 @@ if __name__ == '__main__':
                             MLP(pos_encode_weight.shape[0]*2, [256,256,256,3], ['lrelu','lrelu','lrelu','tanh']),  
                             ), T=config['sampling']['T']).to(device)
 
-
         brdf_net = BRDFNet( Sequential(
                             PositionEncoding(pos_encode_weight, pos_encode_out_weight),  
                             MLP(pos_encode_weight.shape[0]*2, [256]*5+[config['n_lobes']*3+3], ['lrelu']*5+['none']),    
                             ), constant_fresnel=True).to(device)
 
         optimizer = torch.optim.Adam(list(shape_net.parameters())+list(brdf_net.parameters()), lr=config['training']['lr'])
+
         camera_settings_silhouette = pytorch_camera(config['rendering']['silhouette']['image_size'], K)
         camera_settings = pytorch_camera(config['rendering']['rgb']['image_size'], K)
+
         train(config, device, images, silhouettes, R, T, shape_net, brdf_net, optimizer, config['training']['n_iterations'],  
                 call_back=call_back, 
                 light_dirs=None,
                 camera_settings = camera_settings,
                 camera_settings_silhouette=camera_settings_silhouette
                 )
-
+        
+        # Load the checkpoint model
         N_IT =  config['training']['n_iterations']-1
-        load_models(f'{config["experiment_path"]}/{checkpoint_name}_{N_IT}', brdf_net=brdf_net, shape_net=shape_net, 
-                        optimizer=optimizer)
+        load_models(f'{config["experiment_path"]}/{checkpoint_name}_{N_IT}', brdf_net=brdf_net, shape_net=shape_net, optimizer=optimizer)
         
         mesh = sample_mesh(config, shape_net, brdf_net)#init_mesh=init_mesh, **params)
-        trimesh.Trimesh( ( mesh.verts_packed().detach()).cpu().numpy(), mesh.faces_packed().cpu().numpy()).export(f'{config["experiment_path"]}/{checkpoint_name}.obj')
+        trimesh.Trimesh((mesh.verts_packed().detach()).cpu().numpy(), 
+                        mesh.faces_packed().cpu().numpy()).export(f'{config["experiment_path"]}/{checkpoint_name}.obj')
 
         # compile_video(mesh, f'{checkpoint_name}.mp4', distance=2, render_mode='image_ct', **params)
