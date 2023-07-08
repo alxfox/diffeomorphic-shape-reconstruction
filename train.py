@@ -94,6 +94,18 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
         batch_idx = torch.randperm(n_images)[:config['training']['n_image_per_batch']]
         loss_image, loss_silhouette, loss_velocity = 0, 0, 0
 
+        if(is_render_checkpoint):
+            col_count = config['training']['render_cols']
+            img_grid_width = int(col_count * image_size)
+            img_grid_height = int(n_images / col_count * image_size)
+
+            gt_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
+            prd_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
+
+            gt_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
+            prd_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
+
+
         for i in batch_idx:
             gt_image, gt_silhouette = images[i:i+1], silhouettes[i:i+1]
 
@@ -107,17 +119,6 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
             crop = config['rendering']['rgb']['crop']
             if crop:
                 translation, image_size = random_crop(translation, image_size, gt_image, crop_ratio=config['rendering']['rgb']['crop_ratio'])
-
-            if(is_render_checkpoint):
-                col_count = config['training']['render_cols']
-                img_grid_width = int(col_count * image_size)
-                img_grid_height = int(n_images / col_count * image_size)
-
-                gt_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
-                prd_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
-
-                gt_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
-                prd_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
 
             prd_image = render_mesh(mesh, 
                     modes='image_ct', #######
