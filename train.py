@@ -60,7 +60,7 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
     def closure():
         #################################
         ## sample mesh from neural nets
-        is_render_checkpoint = N_IT % config['training']['render_interval'] == 0
+        is_render_checkpoint = N_IT % config['training']['render_interval'] == 0 or N_IT == n_iterations - 1
         nonlocal init_mesh
 
         if null_init:
@@ -105,6 +105,7 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
             gt_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
             prd_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
 
+
         for i in batch_idx:
             gt_image, gt_silhouette = images[i:i+1], silhouettes[i:i+1]
 
@@ -116,8 +117,8 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
 
             # Check if the rendering should be on a subpart of the image
             crop = config['rendering']['rgb']['crop']
-            if crop: 
-                translation, image_size = random_crop(translation, image_size, crop_ratio=config['rendering']['rgb']['crop_ratio'])
+            if crop:
+                translation, image_size = random_crop(translation, image_size, gt_image, crop_ratio=config['rendering']['rgb']['crop_ratio'])
 
             prd_image = render_mesh(mesh, 
                     modes='image_ct', #######

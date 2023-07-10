@@ -50,11 +50,11 @@ def clipped_mse(x, y, max_val=1, edge_lambda=None):
 
 
 def clipped_mae(x, y, max_val=1):
-    x = x / max_val
-    y = y / max_val
-    mask = (x >= 1) & (y >= 1)
     diff = (x - y).abs()
+<<<<<<< HEAD
     #diff = torch.where(mask, torch.zeros_like(diff), diff)
+=======
+>>>>>>> e28d6d02dff34a8ab41afd02d11c8f86cd892af9
     img = (diff[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
     cv2.imwrite(f"./out/diff.png", img)
     return diff.mean()
