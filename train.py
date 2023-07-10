@@ -102,8 +102,7 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
             max_val = image_size - crop_image_size
             x = np.random.randint(0, max_val)
             y = np.random.randint(0, max_val)
-            print('cropping at ', x, y, ' with size ', crop_image_size)
-
+            
         if(is_render_checkpoint):
             col_count = config['training']['render_cols']
             if crop: 
