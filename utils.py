@@ -10,6 +10,7 @@ import random
 from itertools import product
 from tqdm import tqdm
 from pytorch3d.renderer.cameras import PerspectiveCameras
+import math
 
 HAT_INV_SKEW_SYMMETRIC_TOL=1e-5
 
@@ -257,24 +258,7 @@ def pytorch_camera(img_size, K):
     return camera_settings
 
 
-def random_crop(T, image_size, crop_ratio=0.5):
-    '''
-    Setup for rendering a random subpart of the image at each iteration
-    T: Translation matrix of shape (N, 3) of the camera
-    image_size: image size to be rendered
-    crop_ratio: ratio of the image to crop
-    '''
+def random_crop(image, image_size, x, y):
+    crop_img = image[y: y + image_size, x: x + image_size]
 
-    x_translation = random.uniform(-1, 1) # restrict between -1 and 1 to avoid cropping outside the image
-    y_translation = random.uniform(-1, 1)
-    z_translation = T.clone()[0][2] * crop_ratio
-
-    T[0][0] += x_translation # move camera accross the x-axis to get a random crop
-    T[0][1] += y_translation # move camera accross the y-axis to get a random crop
-    T[0][2] = z_translation # move camera closer to the object by 1/crop_ratio
-
-    image_size = int(image_size * crop_ratio)
-
-    return T, image_size
-
-
+    return crop_img
