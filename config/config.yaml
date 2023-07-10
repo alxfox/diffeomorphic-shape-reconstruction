@@ -1,11 +1,11 @@
-name: both_losses
+name: experiment
 n_lobes: 5
 training: 
     render_interval: 1                  # interval at which the current batch should be rendered to a file
     render_cols: 10                     # number of columns to be used for the rendered image grid
     checkpoint_interval: 10             # interval at which a checkpoint of the network should be saved
     n_image_per_batch: 30               # batch size during training
-    lr: 0.0001                           # learning rate
+    lr: 0.001                           # learning rate
     compute_velocity_seperately: True   
     n_pts_per_split: 2048
     sampling_lvl_for_vel_loss: 5
@@ -33,10 +33,10 @@ rendering:
         sigma: 0.0001
         gamma: 0.0001
 loss:   # loss weights
-    lambda_image: 2.0
-    lambda_silhouette: 1.0 #1.0 #######
-    lambda_velocity: 0.0 # 0.1
-    alpha: 0.01 # 0.05
-    lambda_edge: 0.5
-    lambda_normal_consistency: 0.5
-    lambda_laplacian_smoothing: 0.5
+    lambda_image: 1.0
+    lambda_silhouette: 0 #1.0 #######
+    lambda_velocity: 0.1 # 0.1
+    alpha: 0 # 0.05
+    lambda_edge: 0 #0.5
+    lambda_normal_consistency: 0 #0.5
+    lambda_laplacian_smoothing: 0 #0.5

@@ -252,6 +252,7 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
             call_back(mesh, losses[0])
 
     #call_back(end=True)
+
     return losses
 
 def call_back(mesh=None, loss=None, end=False):
