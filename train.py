@@ -26,6 +26,7 @@ from diligent import diligent_eval_chamfer
 import pickle
 import yaml
 import uuid
+from torch.utils.tensorboard import SummaryWriter
 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
 
@@ -56,7 +57,10 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
     n_images = len(images)
 
     null_init = init_mesh is None
-
+    writer = SummaryWriter(config['experiment_path']+"/tensorboard")
+    writer.add_hparams({ "lr": config["training"]["lr"], "T":config["sampling"]["T"],
+                        "ico_sphere_level": config["sampling"]["ico_sphere_level"] },{"value":0},
+                        run_name=os.path.dirname(os.path.realpath(__file__)) + os.sep + config['experiment_path']+"/tensorboard")
     def closure():
         #################################
         ## sample mesh from neural nets
@@ -72,16 +76,16 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
         else:
             x_arr, v_arr, dv_ds_arr, d2v_d2s_arr = shape_net(s, 2)
 
-        x = x_arr[-1]
+        vertices = x_arr[-1]
 
         if config.get('training.vertex_grad_clip', None) is not None:
-            hook = x.register_hook(lambda grad: clamp_vertex_grad(grad, config['training']['vertex_grad_clip']))
+            hook = vertices.register_hook(lambda grad: clamp_vertex_grad(grad, config['training']['vertex_grad_clip']))
 
         theta_x = brdf_net(s)
 
         faces = init_mesh.faces_packed()
 
-        mesh = Meshes(verts=[x], faces=[faces], vert_textures=[theta_x])
+        mesh = Meshes(verts=[vertices], faces=[faces], vert_textures=[theta_x])
         # verts, faces = load_ply("data/mesh.ply")
         # viewpoints = np.load('data/cameras1.npz')
 
@@ -178,14 +182,22 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
                 loss_silhouette += loss_tmp.detach()
 
         if N_IT == 0:
-            cv2.imwrite(f"{config['experiment_path']}/gt.png", gt_grid)
-            if(config['loss']['lambda_silhouette'] != 0):
-                cv2.imwrite(f"{config['experiment_path']}/gt_sil.png", gt_sil_grid)
+            # writer.add_image('Images/GT', (gt_grid/256).astype(np.uint8), dataformats="HWC")
+            if(False):
+                cv2.imwrite(f"{config['experiment_path']}/gt.png", gt_grid)
+                if(config['loss']['lambda_silhouette'] != 0):
+                    # writer.add_image('Silhouette/GT', (gt_sil_grid/256).astype(np.uint8), dataformats="HWC")
+                    cv2.imwrite(f"{config['experiment_path']}/gt_sil.png", gt_sil_grid)
 
         if (is_render_checkpoint):
-            cv2.imwrite(f"{config['experiment_path']}/prd_" + str(N_IT) + ".png", prd_grid)
+            writer.add_mesh("Mesh/Pred", vertices.unsqueeze(0), faces=faces.unsqueeze(0), global_step=N_IT)
+            writer.add_image('Images/Pred', (prd_grid/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+            if(False):
+                cv2.imwrite(f"{config['experiment_path']}/prd_" + str(N_IT) + ".png", prd_grid)
             if(config['loss']['lambda_silhouette'] != 0):
-                cv2.imwrite(f"{config['experiment_path']}/prd_sil_" + str(N_IT) + ".png", prd_sil_grid)
+                writer.add_image('Silhouette/Pred', (prd_sil_grid/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+                if(False):
+                    cv2.imwrite(f"{config['experiment_path']}/prd_sil_" + str(N_IT) + ".png", prd_sil_grid)
         
         if config['loss']['lambda_velocity'] == 0:
             pass
@@ -227,13 +239,14 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
         else:
             loss_laplacian_smoothing = 0
 
-
         loss =  loss_image * config['loss']['lambda_image'] + \
                 loss_silhouette * config['loss']['lambda_silhouette'] + \
                 loss_velocity * config['loss']['lambda_velocity']  + \
                 loss_edge * config['loss']['lambda_edge'] + \
                 loss_normal_consistency * config['loss']['lambda_normal_consistency']+ \
                 loss_laplacian_smoothing * config['loss']['lambda_laplacian_smoothing']
+        # print(loss,loss_image,loss_silhouette,loss_velocity,loss_edge,loss_normal_consistency,loss_laplacian_smoothing)
+        writer.add_scalar('Loss/train', loss, N_IT)
 
         return mesh.detach(), (float(loss), float(loss_image), float(loss_silhouette), float(loss_velocity), float(loss_edge), float(loss_normal_consistency), float(loss_laplacian_smoothing))
     
@@ -301,7 +314,8 @@ if __name__ == '__main__':
         config = yaml.safe_load(open(conf))
         if(not config.get('experiment_path')):
             name = config.get('name')
-            config['experiment_path'] = './out/' + (name + "_" if name else "") + str(uuid.uuid4())
+            config['experiment_name'] = (name + "_" if name else "") + str(uuid.uuid4())
+            config['experiment_path'] = 'out/' + config['experiment_name']
         print("Saving the results to " + config['experiment_path'] + "\n")
 
         try:
