@@ -30,7 +30,7 @@ def render_mesh(mesh, modes, rotations, translations, image_size, blur_radius, f
     # rasterization
     raster_settings = RasterizationSettings(
             image_size=image_size, 
-            blur_radius=min(np.log(1. / 1e-6 - 1.) * sigma, blur_radius / image_size * 2), 
+            blur_radius= min(np.log(1. / 1e-6 - 1.) * sigma, blur_radius / image_size * 2),  #np.log(1. / 1e-1 - 1.)*sigma, for mask
             faces_per_pixel=faces_per_pixel, 
             perspective_correct= False,
             max_faces_per_bin=50000
@@ -38,6 +38,7 @@ def render_mesh(mesh, modes, rotations, translations, image_size, blur_radius, f
     rasterizer = MeshRasterizer(cameras=cameras, raster_settings=raster_settings)
     bgc = (0,0,0) # background color is black
     blend_params = BlendParams(sigma=sigma, gamma=gamma, background_color=bgc)
+    
     t = (-torch.inverse(rotations[0]) @ translations[0])[None] # translation in camera space
     if modes == 'image_ct':
         shader = SoftCookTorranceShader(device=device, cameras=cameras, blend_params=blend_params)      

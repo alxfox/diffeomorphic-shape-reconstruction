@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import pytorch3d
 from pytorch3d.io import load_ply
+from pytorch3d.io import load_obj
 import matplotlib.pyplot as plt
 import imageio
 from Render import render_mesh
@@ -14,10 +15,11 @@ import pickle
 if __name__ == '__main__':
     device = torch.device("cuda:0")
     verts, faces = load_ply("data/mesh.ply")
-    # verts, faces = load_ply("mesh_noNormals.ply")
     viewpoints = np.load('data/cameras1.npz')
-   
+    #viewpoints = np.load('data/cameras_behind.npz')
+
     verts_rgb = torch.ones_like(verts)[None]  # color the mesh white
+    #mesh = Meshes(verts=[verts], faces=[faces.verts_idx], vert_textures=verts_rgb.to(device)).to(device)
     mesh = Meshes(verts=[verts.to(device)], faces=[faces.to(device)], vert_textures=verts_rgb.to(device))
 
     
@@ -108,6 +110,8 @@ if __name__ == '__main__':
         #writer.append_data(img)
         
         cv2.imwrite(f"./data/dataset/render_{i:02}.png", img)
+        ##SET THIS FOR GT FROM VIEPOINTS BEHIND##
+        #cv2.imwrite(f"./data/dataset/render_behind{i:02}.png", img)
         cv2.imwrite(f"./data/dataset/mask_{i:02}.png", imgsh)
     
     

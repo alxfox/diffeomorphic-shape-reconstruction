@@ -63,7 +63,31 @@ def load_dataset(path_str, device, n_images=30, max_faces_no=None):
     return images, masks, R, T, K, None #, transf
     # return make_torch_tensor(imgs.astype(np.float32)[colocated_mask], 
     #     mask.astype(np.float32), (light_dirs[colocated_mask]@np.diag([1,-1,-1])@R).astype(np.float32), view_dirs[colocated_mask], normal, K, P)
+def load_val_dataset(path_str, device, n_images=30, viewpoints_name =None, max_faces_no=None):
+    
+    cameras = np.load(f'{path_str}/cameras_{viewpoints_name}.npz')
 
+    R = torch.zeros((n_images, 3, 3), device=device)
+    T = torch.zeros((n_images, 3), device=device)
+
+    for i in range(n_images): # read camera extrinsics
+        old_rotation = torch.from_numpy(cameras["R_"+str(i)]).float().to(device)
+        # fix rotation
+        extra_rotation = torch.tensor([[-1.0,0,0],[0,-1.0,0],[0,0,1.0]], dtype=old_rotation.dtype).to(device)
+        new_rotation = old_rotation @ extra_rotation
+        R[i] = new_rotation
+        T[i] = torch.from_numpy(cameras["T_"+str(i)]).float()
+    K = torch.from_numpy(cameras["K"]).float().to(device)
+    images = torch.from_numpy(np.stack([\
+                     cv2.imread(f'{path_str}/dataset/render_{viewpoints_name}{j:02}.png', -1)[...,::-1].astype(np.float32) \
+                for j in range(n_images)], axis=0)).to(device)[...,:3]/(256**2-1)
+   
+    masks = torch.from_numpy(np.stack([\
+                            (cv2.imread(f'{path_str}/dataset/mask_{j:02}.png', -1)).astype(np.float32)\
+                             for j in range(n_images)], axis=0)).to(device)/(256**2-1)
+
+    return images, masks, R, T, K, None #, transf
+    
 @torch.no_grad()
 def diligent_eval(verts, faces, gt_verts, gt_faces, path, transf, K, Ps, masks=None, mode='normal', transform_verts=False, normals=None):
     
