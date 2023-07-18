@@ -1,7 +1,7 @@
 import os
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
-from pytorch3d.io import load_ply
+from pytorch3d.io import load_ply, load_obj
 import pytorch3d
 import torch
 import numpy as np
@@ -105,12 +105,8 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
             
         if(is_render_checkpoint):
             col_count = config['training']['render_cols']
-            if crop: 
-                img_grid_width = int(col_count * crop_image_size)
-                img_grid_height = int(n_images / col_count * crop_image_size)
-            else:
-                img_grid_width = int(col_count * image_size)
-                img_grid_height = int(n_images / col_count * image_size)
+            img_grid_width = int(col_count * image_size)
+            img_grid_height = int(n_images / col_count * image_size)
 
             gt_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
             prd_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
@@ -129,7 +125,7 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
 
             # Check if the rendering should be on a subpart of the image
             if crop:
-                gt_image = random_crop(gt_image[0], crop_image_size, x, y)
+                cropped_gt_image = random_crop(gt_image[0], crop_image_size, x, y)
 
             prd_image = render_mesh(mesh, 
                     modes='image_ct', #######
@@ -143,30 +139,29 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
                     sigma=config['rendering']['rgb']['sigma'], gamma=config['rendering']['rgb']['gamma'])[...,:3]
 
             if crop:
-                prd_image = random_crop(prd_image[0], crop_image_size, x, y)
+                cropped_prd_image = random_crop(prd_image[0], crop_image_size, x, y)
 
             if(is_render_checkpoint):
-                if crop: 
-                    grid_x_start = i.item() // col_count * crop_image_size
-                    grid_x_end = grid_x_start + crop_image_size
-                    grid_y_start = (i.item() % col_count)* crop_image_size
-                    grid_y_end = grid_y_start + crop_image_size
-                else: 
                     grid_x_start = i.item() // col_count * image_size
                     grid_x_end = grid_x_start + image_size
                     grid_y_start = (i.item() % col_count)* image_size
                     grid_y_end = grid_y_start + image_size
 
-                img = (prd_image*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
-                prd_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+                    img = (prd_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+                    prd_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
 
-                img = (gt_image*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
-                gt_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
-            
+                    img = (gt_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+                    gt_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+
             if config['loss']['lambda_image'] != 0:
-                loss_tmp = clipped_mae(gt_image.cuda(), prd_image) / config['training']['n_image_per_batch']
-                (loss_tmp * config['loss']['lambda_image']).backward(retain_graph=True)
-                loss_image += loss_tmp.detach()
+                if crop: 
+                    loss_tmp = clipped_mae(cropped_gt_image.cuda(), cropped_prd_image) / config['training']['n_image_per_batch']
+                    (loss_tmp * config['loss']['lambda_image']).backward(retain_graph=True)
+                    loss_image += loss_tmp.detach()
+                else: 
+                    loss_tmp = clipped_mae(gt_image.cuda(), prd_image) / config['training']['n_image_per_batch']
+                    (loss_tmp * config['loss']['lambda_image']).backward(retain_graph=True)
+                    loss_image += loss_tmp.detach()
 
             if config['loss']['lambda_silhouette'] != 0:
                 prd_silhouette = render_mesh(mesh, 
@@ -194,7 +189,7 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
                 (loss_tmp * config['loss']['lambda_silhouette']).backward(retain_graph=True)
                 loss_silhouette += loss_tmp.detach()
 
-        if (is_render_checkpoint):
+        if (N_IT == 0):
             cv2.imwrite(f"{config['experiment_path']}/gt_" + str(N_IT) + ".png", gt_grid)
             if(config['loss']['lambda_silhouette'] != 0):
                 cv2.imwrite(f"{config['experiment_path']}/gt_"+ str(N_IT) + ".png", gt_sil_grid)
