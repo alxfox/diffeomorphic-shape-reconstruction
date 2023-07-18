@@ -1,7 +1,7 @@
 import os
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
-from pytorch3d.io import load_ply
+from pytorch3d.io import load_ply, load_obj
 import pytorch3d
 import torch
 import numpy as np
@@ -94,10 +94,19 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
         #################################
         ## render images with mesh
         ## and compute losses
-        image_size=config['rendering']['rgb']['image_size']
         batch_idx = torch.randperm(n_images)[:config['training']['n_image_per_batch']]
         loss_image, loss_silhouette, loss_velocity = 0, 0, 0
 
+        crop = config['rendering']['rgb']['crop']
+        crop_ratio = config['rendering']['rgb']['crop_ratio']
+        image_size=config['rendering']['rgb']['image_size']
+
+        if crop:
+            crop_image_size = int(image_size * crop_ratio)
+            max_val = image_size - crop_image_size
+            x = np.random.randint(0, max_val)
+            y = np.random.randint(0, max_val)
+            
         if(is_render_checkpoint):
             col_count = config['training']['render_cols']
             img_grid_width = int(col_count * image_size)
@@ -109,7 +118,6 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
             gt_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
             prd_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
 
-
         for i in batch_idx:
             gt_image, gt_silhouette = images[i:i+1], silhouettes[i:i+1]
 
@@ -120,9 +128,8 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
             translation = translations[i:i+1]
 
             # Check if the rendering should be on a subpart of the image
-            crop = config['rendering']['rgb']['crop']
             if crop:
-                translation, image_size = random_crop(translation, image_size, gt_image, crop_ratio=config['rendering']['rgb']['crop_ratio'])
+                cropped_gt_image = random_crop(gt_image[0], crop_image_size, x, y)
 
             prd_image = render_mesh(mesh, 
                     modes='image_ct', #######
@@ -135,25 +142,30 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
                     device=device, background_colors=None, light_poses=light_pose, materials=None, camera_settings=camera_settings,
                     sigma=config['rendering']['rgb']['sigma'], gamma=config['rendering']['rgb']['gamma'])[...,:3]
 
+            if crop:
+                cropped_prd_image = random_crop(prd_image[0], crop_image_size, x, y)
+
             if(is_render_checkpoint):
-                grid_x_start = i.item() // col_count * image_size
-                grid_x_end = grid_x_start + image_size
-                grid_y_start = (i.item() % col_count)* image_size
-                grid_y_end = grid_y_start + image_size
+                    grid_x_start = i.item() // col_count * image_size
+                    grid_x_end = grid_x_start + image_size
+                    grid_y_start = (i.item() % col_count)* image_size
+                    grid_y_end = grid_y_start + image_size
 
-                img = (prd_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
-                prd_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+                    img = (prd_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+                    prd_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
 
-                img = (gt_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
-                gt_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
-            
+                    img = (gt_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+                    gt_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+
             if config['loss']['lambda_image'] != 0:
-                max_intensity = config['rendering']['rgb']['max_intensity'] #* (np.random.rand()+1)
-                loss_tmp = clipped_mae(gt_image.cuda(), prd_image) / config['training']['n_image_per_batch']
-                # loss_tmp = clipped_mae(gt_image.cuda().clamp_max(max_intensity), prd_image, max_intensity) / config['training']['n_image_per_batch']
-                # print("loss",loss_tmp)
-                (loss_tmp * config['loss']['lambda_image']).backward(retain_graph=True)
-                loss_image += loss_tmp.detach()
+                if crop: 
+                    loss_tmp = clipped_mae(cropped_gt_image.cuda(), cropped_prd_image) / config['training']['n_image_per_batch']
+                    (loss_tmp * config['loss']['lambda_image']).backward(retain_graph=True)
+                    loss_image += loss_tmp.detach()
+                else: 
+                    loss_tmp = clipped_mae(gt_image.cuda(), prd_image) / config['training']['n_image_per_batch']
+                    (loss_tmp * config['loss']['lambda_image']).backward(retain_graph=True)
+                    loss_image += loss_tmp.detach()
 
             if config['loss']['lambda_silhouette'] != 0:
                 prd_silhouette = render_mesh(mesh, 
