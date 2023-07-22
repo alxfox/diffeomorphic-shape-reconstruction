@@ -112,10 +112,10 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
             img_grid_width = int(col_count * image_size)
             img_grid_height = int(n_images / col_count * image_size)
 
-            gt_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
+            # gt_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
             prd_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
 
-            gt_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
+            # gt_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
             prd_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
 
         for i in batch_idx:
@@ -154,8 +154,8 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
                     img = (prd_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
                     prd_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
 
-                    img = (gt_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
-                    gt_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+                    # img = (gt_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+                    # gt_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
 
             if config['loss']['lambda_image'] != 0:
                 if crop: 
@@ -186,30 +186,9 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
                     img = (prd_silhouette[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
                     prd_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
 
-                    img = (gt_silhouette[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
-                    gt_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
-
                 loss_tmp = mse(gt_silhouette.cuda(), prd_silhouette) / config['training']['n_image_per_batch']
                 (loss_tmp * config['loss']['lambda_silhouette']).backward(retain_graph=True)
                 loss_silhouette += loss_tmp.detach()
-
-        if N_IT == 0:
-            # writer.add_image('Images/GT', (gt_grid/256).astype(np.uint8), dataformats="HWC")
-            if(False):
-                cv2.imwrite(f"{config['experiment_path']}/gt.png", gt_grid)
-                if(config['loss']['lambda_silhouette'] != 0):
-                    # writer.add_image('Silhouette/GT', (gt_sil_grid/256).astype(np.uint8), dataformats="HWC")
-                    cv2.imwrite(f"{config['experiment_path']}/gt_sil.png", gt_sil_grid)
-
-        if (is_render_checkpoint):
-            writer.add_mesh("Mesh/Pred", vertices.unsqueeze(0), faces=faces.unsqueeze(0), global_step=N_IT)
-            writer.add_image('Images/Pred', (prd_grid/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
-            if(False):
-                cv2.imwrite(f"{config['experiment_path']}/prd_" + str(N_IT) + ".png", prd_grid)
-            if(config['loss']['lambda_silhouette'] != 0):
-                writer.add_image('Silhouette/Pred', (prd_sil_grid/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
-                if(False):
-                    cv2.imwrite(f"{config['experiment_path']}/prd_sil_" + str(N_IT) + ".png", prd_sil_grid)
         
         if config['loss']['lambda_velocity'] == 0:
             pass
@@ -257,23 +236,23 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
                 loss_edge * config['loss']['lambda_edge'] + \
                 loss_normal_consistency * config['loss']['lambda_normal_consistency']+ \
                 loss_laplacian_smoothing * config['loss']['lambda_laplacian_smoothing']
-        # print(loss,loss_image,loss_silhouette,loss_velocity,loss_edge,loss_normal_consistency,loss_laplacian_smoothing)
-        writer.add_scalar('Loss/train', loss, N_IT)
 
-        return mesh.detach(), (float(loss), float(loss_image), float(loss_silhouette), float(loss_velocity), float(loss_edge), float(loss_normal_consistency), float(loss_laplacian_smoothing))
+        return mesh.detach(), (float(loss), float(loss_image), float(loss_silhouette), float(loss_velocity), float(loss_edge), float(loss_normal_consistency), float(loss_laplacian_smoothing)), (prd_grid, )
     
     pbar = tqdm(range(n_iterations))
 
     for N_IT in pbar:
         optimizer.zero_grad()
-        mesh, losses = closure()
+        mesh, losses, rendered_images = closure()
         if(N_IT % config['training']['checkpoint_interval'] == 0 or N_IT == n_iterations-1):
             with torch.no_grad():
                 save_models(f'{config["experiment_path"]}/{checkpoint_name}_{N_IT}', brdf_net=brdf_net, shape_net=shape_net, 
                             optimizer=optimizer, meta=dict(loss=losses[0], params=config))
+                writer.add_mesh("Mesh/Pred", mesh.verts_packed().unsqueeze(0), faces=mesh.faces_packed().unsqueeze(0), global_step=N_IT)
+        writer.add_image('Image/Pred', (rendered_images[0]/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+        writer.add_scalar('Loss/train', losses[0], N_IT)
         optimizer.step()
         pbar.set_description('|'.join(f'{l:.2e}' for l in losses).replace('e', '').replace('|', ' || ', 1))
-
         if call_back is not None:
             call_back(mesh, losses[0])
 
