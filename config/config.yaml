@@ -1,9 +1,9 @@
-name: experiment
+name: early-stopping
 n_lobes: 5
 training: 
     render_interval: 1                  # interval at which the current batch should be rendered to a file
     render_cols: 10                     # number of columns to be used for the rendered image grid
-    checkpoint_interval: 10             # interval at which a checkpoint of the network should be saved
+    checkpoint_interval: 10            # interval at which a checkpoint of the network should be saved
     n_image_per_batch: 30               # batch size during training
     lr: 0.0002                           # learning rate
     compute_velocity_seperately: True   
@@ -32,6 +32,11 @@ rendering:
         faces_per_pixel: 100
         sigma: 0.0001
         gamma: 0.0001
+validation: 
+    angle: None                     # specify an angle of viewpoints
+    interval: 30      # interval at which a validation of the network is applied
+    early_stopping: True
+    early_stopping_patience: 1
 loss:   # loss weights
     lambda_image: 1.0
     lambda_silhouette: 0 #1.0 #######

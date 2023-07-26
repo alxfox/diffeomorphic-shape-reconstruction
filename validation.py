@@ -17,37 +17,39 @@ import pickle
 import yaml
 from torch.nn.functional import mse_loss as mse
 from dataloader import load_val_dataset,load_dataset
+from torch.utils.tensorboard import SummaryWriter
 
 
-if __name__ == '__main__':
+def validation(config, N_IT, mesh, shape_net, angle, is_render = False): 
     device = torch.device("cuda:0")
-    file = 'experiment_e852184d-ed34-438e-aa06-549f2a2ebe99'
-    conf = join('./out',file,'config.yaml')
+    #file = 'experiment_e852184d-ed34-438e-aa06-549f2a2ebe99'
+    # conf = join('./out',file,'config.yaml')
     
-    config = yaml.safe_load(open(conf))
+    # config = yaml.safe_load(open(conf))
     #verts, faces = load_ply("data/mesh.ply")
-    verts, faces, aux = load_obj(join('./out',file,"checkpoint.obj"))
+    # verts, faces, aux = load_obj(join('./out',file,"checkpoint.obj"))
       
-    verts_rgb = torch.ones_like(verts)[None]  # color the mesh white
-    mesh = Meshes(verts=[verts], faces=[faces.verts_idx], vert_textures=verts_rgb.to(device)).to(device)
+    # verts_rgb = torch.ones_like(verts)[None]  # color the mesh white
+    # mesh = Meshes(verts=[verts], faces=[faces.verts_idx], vert_textures=verts_rgb.to(device)).to(device)
     #mesh = Meshes(verts=[verts.to(device)], faces=[faces.to(device)], vert_textures=verts_rgb.to(device))
 
     #### Set viewpoints_name in load_val_dataset ####
-    images, silhouettes, rotations, translations, K, transf = load_val_dataset(path_str ='data',device=device, n_images=config['training']['n_image_per_batch'], viewpoints_name = 'behind')
+    images, silhouettes, rotations, translations, K, transf = load_val_dataset(path_str ='data',device=device, n_images=config['training']['n_image_per_batch'], viewpoints_name = angle)
     #images, silhouettes, rotations, translations, K, transf = load_dataset(path_str ='data',device=device, n_images=config['training']['n_image_per_batch'])
     
     camera_settings = pytorch_camera(config['rendering']['rgb']['image_size'], K)
     images = images.cpu()
+    silhouettes = silhouettes.cpu()
 
 
-    pos_encode_weight = torch.cat(tuple(torch.eye(3) * (1.5**i) for i in range(0,14,1)), dim=0) #######
-    pos_encode_out_weight = torch.cat(tuple( torch.tensor([1.0/(1.3**i)]*3) for i in range(0,14,1)), dim=0) #######
+    # pos_encode_weight = torch.cat(tuple(torch.eye(3) * (1.5**i) for i in range(0,14,1)), dim=0) #######
+    # pos_encode_out_weight = torch.cat(tuple( torch.tensor([1.0/(1.3**i)]*3) for i in range(0,14,1)), dim=0) #######
     
-    shape_net = ShapeNet(velocity_mlp= Sequential(
-                        PositionEncoding(pos_encode_weight, pos_encode_out_weight),
-                        MLP(pos_encode_weight.shape[0]*2, [256,256,256,3], ['lrelu','lrelu','lrelu','tanh']),  
-                        ), T=config['sampling']['T']).to(device)
-    N_IT =  config['training']['n_iterations']-1
+    # shape_net = ShapeNet(velocity_mlp= Sequential(
+    #                     PositionEncoding(pos_encode_weight, pos_encode_out_weight),
+    #                     MLP(pos_encode_weight.shape[0]*2, [256,256,256,3], ['lrelu','lrelu','lrelu','tanh']),  
+    #                     ), T=config['sampling']['T']).to(device)
+    # N_IT =  config['training']['n_iterations']-1
     
     #loaded_data = load_models(f'./out/{file}/checkpoint_{N_IT}')
     #print("Loss",loaded_data['loss'])
@@ -55,9 +57,9 @@ if __name__ == '__main__':
     #shape_net.load_state_dict(loaded_shape_net_state_dict)
     #shape_net.eval()
     
-    checkpoint = torch.load(f'./out/{file}/checkpoint_{N_IT}')
-    shape_net.load_state_dict(checkpoint['shape_net'])
-    shape_net.eval()
+    # checkpoint = torch.load(f'./out/{file}/checkpoint_{N_IT}')
+    # shape_net.load_state_dict(checkpoint['shape_net'])
+    # shape_net.eval()
 
     light_dirs=None
     n_images = len(images)
@@ -65,11 +67,14 @@ if __name__ == '__main__':
     ## sample mesh from neural nets
     init_mesh = rand_ico_sphere(config['sampling']['ico_sphere_level'], device=device)
     s = init_mesh.verts_packed()
-
+    
+    shape_net.eval()
     if (config['loss']['lambda_velocity']==0) or (config['loss']['alpha'] == 0) or config['training']['compute_velocity_seperately']:
-        x_arr, v_arr, dv_ds_arr, d2v_d2s_arr = shape_net(s, 0)
+        #with torch.no_grad():
+            x_arr, v_arr, dv_ds_arr, d2v_d2s_arr = shape_net(s, 0)
     else:
-        x_arr, v_arr, dv_ds_arr, d2v_d2s_arr = shape_net(s, 2)
+        #with torch.no_grad():
+            x_arr, v_arr, dv_ds_arr, d2v_d2s_arr = shape_net(s, 2)
 
     x = x_arr[-1]
 
@@ -77,18 +82,18 @@ if __name__ == '__main__':
     batch_idx = torch.randperm(n_images)[:config['training']['n_image_per_batch']]
     loss_image, loss_silhouette, loss_velocity = 0, 0, 0
 
-    is_render_checkpoint = True
-    if(is_render_checkpoint):
-        col_count = config['training']['render_cols']
-        img_grid_width = int(col_count * image_size)
-        img_grid_height = int(n_images / col_count * image_size)
+    
+    
+    col_count = config['training']['render_cols']
+    img_grid_width = int(col_count * image_size)
+    img_grid_height = int(n_images / col_count * image_size)
 
-        gt_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
-        prd_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
+    gt_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
+    prd_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
 
-        if(config['loss']['lambda_silhouette'] != 0):
-            gt_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
-            prd_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
+    if(config['loss']['lambda_silhouette'] != 0):
+        gt_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
+        prd_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
 
     for i in batch_idx:
         gt_image, gt_silhouette = images[i:i+1], silhouettes[i:i+1]
@@ -110,17 +115,17 @@ if __name__ == '__main__':
                 device=device, background_colors=None, light_poses=light_pose, materials=None, camera_settings=camera_settings,
                 sigma=config['rendering']['rgb']['sigma'], gamma=config['rendering']['rgb']['gamma'])[...,:3]
 
-        if(is_render_checkpoint):
-            grid_x_start = i.item() // col_count * image_size
-            grid_x_end = grid_x_start + image_size
-            grid_y_start = (i.item() % col_count)* image_size
-            grid_y_end = grid_y_start + image_size
+        
+        grid_x_start = i.item() // col_count * image_size
+        grid_x_end = grid_x_start + image_size
+        grid_y_start = (i.item() % col_count)* image_size
+        grid_y_end = grid_y_start + image_size
 
-            img = (prd_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
-            prd_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+        img = (prd_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+        prd_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
 
-            img = (gt_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
-            gt_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+        img = (gt_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+        gt_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
         
         if config['loss']['lambda_image'] != 0:
             max_intensity = config['rendering']['rgb']['max_intensity'] #* (np.random.rand()+1)
@@ -148,29 +153,31 @@ if __name__ == '__main__':
             prd_silhouette = torch.unsqueeze(prd_silhouette,0)
             gt_silhouette = torch.unsqueeze(gt_silhouette,3)
 
-            if(is_render_checkpoint):
-                img = (prd_silhouette[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
-                prd_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+            
+            img = (prd_silhouette[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+            prd_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
 
-                img = (gt_silhouette[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
-                gt_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+            img = (gt_silhouette[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+            gt_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
 
             loss_tmp = mse(gt_silhouette.cuda(), prd_silhouette) / config['training']['n_image_per_batch']
             #(loss_tmp * config['loss']['lambda_silhouette']).backward(retain_graph=True)
             loss_silhouette += loss_tmp
             
-
-    path = join('./out',file,'validation')
-    if os.path.exists(path)== False:
-        os.mkdir(path)
-    cv2.imwrite(f"{path}/gt.png", gt_grid)
-    if(config['loss']['lambda_silhouette'] != 0):
-        cv2.imwrite(f"{path}/gt_sil.png", gt_sil_grid)
-
-    if (is_render_checkpoint):
-        cv2.imwrite(f"{path}/prd_val" + ".png", prd_grid)
+    
+    # path = join('./out',file,'validation_{}')
+    # if os.path.exists(path)== False:
+    #     os.mkdir(path)
+    path = config["experiment_path"]
+    if (is_render):
+        cv2.imwrite(f"{path}/gt_val_{angle}_{N_IT}.png", gt_grid)
         if(config['loss']['lambda_silhouette'] != 0):
-            cv2.imwrite(f"{path}/prd_sil_val" + ".png", prd_sil_grid)
+            cv2.imwrite(f"{path}/gt_sil_val_{angle}_{N_IT}.png", gt_sil_grid)
+
+    if (is_render):
+        cv2.imwrite(f"{path}/prd_val_{angle}_{N_IT}" + ".png", prd_grid)
+        if(config['loss']['lambda_silhouette'] != 0):
+            cv2.imwrite(f"{path}/prd_sil_val_{angle}_{N_IT}" + ".png", prd_sil_grid)
     
     if config['loss']['lambda_velocity'] == 0:
         pass
@@ -220,17 +227,19 @@ if __name__ == '__main__':
             loss_normal_consistency * config['loss']['lambda_normal_consistency']+ \
             loss_laplacian_smoothing * config['loss']['lambda_laplacian_smoothing']
     
-    path = join('./out',file,'validation','loss.pckl')
-    f = open(path, 'wb')
-    pickle.dump(loss, f)
-    pickle.dump(loss_image, f)
-    pickle.dump(loss_velocity, f)
-    f.close()
-
-    print("Loss", float(loss))
-    print("loss_image", float(loss_image))
-    print("loss_velocity", float(loss_velocity))
-    #return (float(loss), float(loss_image), float(loss_silhouette), float(loss_velocity), float(loss_edge), float(loss_normal_consistency), float(loss_laplacian_smoothing))
+    
+    
+    # path = join('./out',file,'validation','loss.pckl')
+    # f = open(path, 'wb')
+    # pickle.dump(loss, f)
+    # pickle.dump(loss_image, f)
+    # pickle.dump(loss_velocity, f)
+    # f.close()
+    # print("---------------N-iter-------------", N_IT)
+    # print("Loss", float(loss))
+    # print("loss_image", float(loss_image))
+    # print("loss_velocity", float(loss_velocity))
+    return (float(loss), gt_grid, prd_grid )
     
 
 

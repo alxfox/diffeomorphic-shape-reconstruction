@@ -10,13 +10,16 @@ from utils import r2R, dotty, save_images, pytorch_camera, Meshes
 import cv2
 import os
 import pickle
+from os.path import isfile, join
 
 
-if __name__ == '__main__':
+
+
+def create(viewpoints, validation = False, name = None):
     device = torch.device("cuda:0")
     verts, faces = load_ply("data/mesh.ply")
-    viewpoints = np.load('data/cameras1.npz')
-    #viewpoints = np.load('data/cameras_behind.npz')
+    viewpoints = np.load(join('data',viewpoints))
+   
 
     verts_rgb = torch.ones_like(verts)[None]  # color the mesh white
     #mesh = Meshes(verts=[verts], faces=[faces.verts_idx], vert_textures=verts_rgb.to(device)).to(device)
@@ -108,12 +111,21 @@ if __name__ == '__main__':
         img = (images[i]/max_val*((256**2)-1)).cpu().numpy().astype(np.uint16)[0]
         imgsh = (silhouettes[i]*((256**2)-1)).cpu().numpy().astype(np.uint16)
         #writer.append_data(img)
+        if (validation):
+            cv2.imwrite(f"./data/dataset/render_{name}{i:02}.png", img)
+        else:
+            cv2.imwrite(f"./data/dataset/render_{i:02}.png", img)
+            cv2.imwrite(f"./data/dataset/mask_{i:02}.png", imgsh)
         
-        cv2.imwrite(f"./data/dataset/render_{i:02}.png", img)
-        ##SET THIS FOR GT FROM VIEPOINTS BEHIND##
-        #cv2.imwrite(f"./data/dataset/render_behind{i:02}.png", img)
-        cv2.imwrite(f"./data/dataset/mask_{i:02}.png", imgsh)
+        
     
     
-        
+if __name__ == '__main__':
+     
+    create(viewpoints = 'cameras1.npz')
+    create(viewpoints = 'cameras_behind.npz', validation = True , name = 'behind')
+    create(viewpoints = 'cameras_above.npz', validation = True , name = 'above')
+    create(viewpoints = 'cameras_below.npz', validation = True , name = 'below')
+    
+      
     

@@ -27,8 +27,25 @@ import pickle
 import yaml
 import uuid
 from torch.utils.tensorboard import SummaryWriter
+from validation import validation
 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
+class EarlyStopper:
+    def __init__(self, patience=1, min_delta=0):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.min_validation_loss = np.inf
+
+    def early_stop(self, validation_loss):
+        if validation_loss < self.min_validation_loss:
+            self.min_validation_loss = validation_loss
+            self.counter = 0
+        elif validation_loss > (self.min_validation_loss + self.min_delta):
+            self.counter += 1
+            if self.counter >= self.patience:
+                return True
+        return False
 
 @torch.no_grad()
 def sample_mesh(config, shape_net, brdf_net, init_mesh=None, normal_net=None):
@@ -61,6 +78,9 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
     writer.add_hparams({ "lr": config["training"]["lr"], "T":config["sampling"]["T"],
                         "ico_sphere_level": config["sampling"]["ico_sphere_level"] },{"value":0},
                         run_name=os.path.dirname(os.path.realpath(__file__)) + os.sep + config['experiment_path']+"/tensorboard")
+    
+    early_stopper = EarlyStopper(patience=config['validation']['early_stopping_patience'], min_delta=0.0)
+
     def closure():
         #################################
         ## sample mesh from neural nets
@@ -256,9 +276,54 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
         if call_back is not None:
             call_back(mesh, losses[0])
 
+        if(N_IT % config['validation']['interval'] == 0 or N_IT == n_iterations-1):
+        #     # loaded_data = load_models(f'{config["experiment_path"]}/{checkpoint_name}_{N_IT}')
+        #     # loaded_shape_net_state_dict = loaded_data['shape_net']
+        #     # shape_net.load_state_dict(loaded_shape_net_state_dict)
+            print("val")
+            shape_net.eval()
+            brdf_net.eval()
+            with torch.no_grad():
+                mesh = sample_mesh(config, shape_net, brdf_net)#init_mesh=init_mesh, **params)
+
+                
+                angle = config['validation']['angle']
+                if angle == 'behind':
+                    loss_val, gt, prd =validation(config, N_IT, mesh, shape_net,angle = 'behind')
+                    writer.add_scalar('Loss/val_behind', float(loss_val), N_IT)
+                    writer.add_image('Image/Pred_behind', (prd/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+                elif angle == 'above':
+                    loss_val , gt, prd=validation(config, N_IT, mesh, shape_net,angle = 'above')
+                    writer.add_scalar('Loss/val_above', float(loss_val), N_IT)
+                    writer.add_image('Image/Pred_above', (prd/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+                elif angle == 'below':
+                    loss_val , gt, prd= validation(config, N_IT, mesh, shape_net,angle = 'below')
+                    writer.add_scalar('Loss/val_below', float(loss_val), N_IT)
+                    writer.add_image('Image/Pred_below', (prd/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+                else :
+                    loss_val1 , gt, prd= validation(config, N_IT, mesh, shape_net,angle = 'behind')
+                    writer.add_scalar('Loss/val_behind', float(loss_val1), N_IT)
+                    writer.add_image('Image/Pred_behind', (prd/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+                    loss_val2 , gt, prd= validation(config, N_IT, mesh, shape_net,angle = 'above')
+                    writer.add_scalar('Loss/val_above', float(loss_val2), N_IT)
+                    writer.add_image('Image/Pred_above', (prd/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+                    loss_val3 , gt, prd= validation(config, N_IT, mesh, shape_net,angle = 'below')
+                    writer.add_scalar('Loss/val_below', float(loss_val3), N_IT)
+                    writer.add_image('Image/Pred_below', (prd/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+                    loss_val = float(loss_val1)+float(loss_val2)+float(loss_val3)
+                loss_val = losses[0]+ loss_val
+
+                if config['validation']['early_stopping'] == True and early_stopper.early_stop(loss_val):
+                    print("Early stopping at iter:", N_IT)
+                    break
+
+            
+            shape_net.train()
+            brdf_net.train()
+
     #call_back(end=True)
 
-    return losses
+    return losses, N_IT
 
 def call_back(mesh=None, loss=None, end=False):
 
@@ -354,7 +419,7 @@ if __name__ == '__main__':
 
         print("Starting training...")
 
-        train(config, device, images, silhouettes, R, T, shape_net, brdf_net, optimizer, config['training']['n_iterations'],  
+        losses, N_IT = train(config, device, images, silhouettes, R, T, shape_net, brdf_net, optimizer, config['training']['n_iterations'],  
                 call_back=call_back, 
                 light_dirs=None,
                 camera_settings = camera_settings,
@@ -364,7 +429,7 @@ if __name__ == '__main__':
         print("Training completed!")
         
         # Load the checkpoint model
-        N_IT =  config['training']['n_iterations']-1
+        #N_IT =  config['training']['n_iterations']-1
         load_models(f'{config["experiment_path"]}/{checkpoint_name}_{N_IT}', brdf_net=brdf_net, shape_net=shape_net, optimizer=optimizer)
         
         mesh = sample_mesh(config, shape_net, brdf_net)#init_mesh=init_mesh, **params)
