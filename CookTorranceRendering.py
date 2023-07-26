@@ -364,7 +364,7 @@ class SoftCookTorranceShader(nn.Module):
     """
 
     def __init__(
-        self, device="cpu", cameras=None, lights=None, materials=None, blend_params=None
+        self, device="cpu", cameras=None, lights=None, materials=None, blend_params=None, NeRF_bgc=None
     ):
         super().__init__()
         self.lights = lights if lights is not None else PointLights(device=device)
@@ -373,6 +373,7 @@ class SoftCookTorranceShader(nn.Module):
         )
         self.cameras = cameras
         self.blend_params = blend_params if blend_params is not None else BlendParams()
+        self.NeRF_bgc = NeRF_bgc
 
     def forward(self, fragments, meshes, **kwargs) -> torch.Tensor:
         cameras = kwargs.get("cameras", self.cameras)
@@ -385,6 +386,7 @@ class SoftCookTorranceShader(nn.Module):
         lights = kwargs.get("lights", self.lights)
         materials = kwargs.get("materials", self.materials)
         blend_params = kwargs.get("blend_params", self.blend_params)
+        NeRF_bgc = kwargs.get("NeRF_bgc", self.NeRF_bgc)
         colors, opacity = cook_torrance_shading(
             meshes=meshes,
             fragments=fragments,
@@ -395,7 +397,7 @@ class SoftCookTorranceShader(nn.Module):
         )
         # if max_radiance is not None:
         #     colors = torch.clamp_max(colors, max_radiance)
-        images = softmax_rgb_blend(colors, opacity.float(), fragments, blend_params)
+        images = softmax_rgb_blend(colors, opacity.float(), fragments, blend_params, NeRF_bgc)
         return images
 
 class SoftNormalShader(nn.Module):
@@ -546,7 +548,7 @@ class SoftTextureShader(nn.Module):
         return images
 
 def softmax_rgb_blend(
-    colors, opacity, fragments, blend_params, znear: float = 1.0, zfar: float = 100
+    colors, opacity, fragments, blend_params, NeRF_bgc=None, znear: float = 1.0, zfar: float = 100
 ) -> torch.Tensor:
     """
     RGB and alpha channel blending to return an RGBA image based on the method
@@ -589,7 +591,10 @@ def softmax_rgb_blend(
     N, H, W, K = fragments.pix_to_face.shape
     device = fragments.pix_to_face.device
     pixel_colors = torch.ones((N, H, W, 4), dtype=colors.dtype, device=colors.device)
-    background = blend_params.background_color
+    if NeRF_bgc is not None: 
+        background = NeRF_bgc
+    else:
+        background = blend_params.background_color
     if not torch.is_tensor(background):
         background = torch.tensor(background, dtype=torch.float32, device=device)
 
