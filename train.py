@@ -280,7 +280,7 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
         #     # loaded_data = load_models(f'{config["experiment_path"]}/{checkpoint_name}_{N_IT}')
         #     # loaded_shape_net_state_dict = loaded_data['shape_net']
         #     # shape_net.load_state_dict(loaded_shape_net_state_dict)
-            print("val")
+            
             shape_net.eval()
             brdf_net.eval()
             with torch.no_grad():
@@ -311,7 +311,7 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
                     writer.add_scalar('Loss/val_below', float(loss_val3), N_IT)
                     writer.add_image('Image/Pred_below', (prd/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
                     loss_val = float(loss_val1)+float(loss_val2)+float(loss_val3)
-                loss_val = losses[0]+ loss_val
+                
 
                 if config['validation']['early_stopping'] == True and early_stopper.early_stop(loss_val):
                     print("Early stopping at iter:", N_IT)
