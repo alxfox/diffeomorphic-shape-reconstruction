@@ -133,10 +133,10 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
             img_grid_height = int(n_images / col_count * image_size)
 
             # gt_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
-            prd_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
+            prd_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.float32)
 
             # gt_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
-            prd_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
+            prd_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.float32)
 
         for i in batch_idx:
             gt_image, gt_silhouette = images[i:i+1], silhouettes[i:i+1]
@@ -170,9 +170,7 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
                     grid_x_end = grid_x_start + image_size
                     grid_y_start = (i.item() % col_count)* image_size
                     grid_y_end = grid_y_start + image_size
-
-                    img = (prd_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
-                    prd_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+                    prd_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = prd_image[0].detach().cpu().numpy()
 
                     # img = (gt_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
                     # gt_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
@@ -203,8 +201,7 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
                 gt_silhouette = torch.unsqueeze(gt_silhouette,3)
 
                 if(is_render_checkpoint):
-                    img = (prd_silhouette[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
-                    prd_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+                    prd_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = prd_silhouette[0].detach().cpu().numpy()
 
                 loss_tmp = mse(gt_silhouette.cuda(), prd_silhouette) / config['training']['n_image_per_batch']
                 (loss_tmp * config['loss']['lambda_silhouette']).backward(retain_graph=True)
@@ -269,7 +266,7 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
                 save_models(f'{config["experiment_path"]}/{checkpoint_name}_{N_IT}', brdf_net=brdf_net, shape_net=shape_net, 
                             optimizer=optimizer, meta=dict(loss=losses[0], params=config))
                 writer.add_mesh("Mesh/Pred", mesh.verts_packed().unsqueeze(0), faces=mesh.faces_packed().unsqueeze(0), global_step=N_IT)
-        writer.add_image('Image/Pred', (rendered_images[0]/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+        writer.add_image('Image/Pred', (rendered_images[0]*255).clip(0,255).astype(np.uint8), dataformats="HWC", global_step=N_IT)
         writer.add_scalar('Loss/train', losses[0], N_IT)
         optimizer.step()
         pbar.set_description('|'.join(f'{l:.2e}' for l in losses).replace('e', '').replace('|', ' || ', 1))
