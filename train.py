@@ -70,7 +70,7 @@ def clamp_vertex_grad(grad, thre):
     ret[torch.logical_not(torch.abs(ret) < thre)] = 0
     return ret
 
-def train(config, device, images, silhouettes, rotations, translations, shape_net, brdf_net, optimizer, n_iterations, light_dirs=None, call_back=None, init_mesh=None,  camera_settings=None,  camera_settings_silhouette=None):
+def train(config, device, images, silhouettes, cubes, rotations, translations, shape_net, brdf_net, optimizer, n_iterations, light_dirs=None, call_back=None, init_mesh=None,  camera_settings=None,  camera_settings_silhouette=None):
     n_images = len(images)
 
     null_init = init_mesh is None
@@ -132,7 +132,7 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
             img_grid_width = int(col_count * image_size)
             img_grid_height = int(n_images / col_count * image_size)
 
-            # gt_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
+            gt_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
             prd_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
 
             # gt_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
@@ -140,6 +140,10 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
 
         for i in batch_idx:
             gt_image, gt_silhouette = images[i:i+1], silhouettes[i:i+1]
+            gt_cubes = cubes[i:i+1]
+
+            # NeRF_bgc consists of brightness of the gt_cubes images
+            NeRF_bgc = gt_cubes
 
             light_pose = None
             if light_dirs is not None:
@@ -159,23 +163,24 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
                     image_size=image_size, 
                     blur_radius=config['rendering']['rgb']['blur_radius'], 
                     faces_per_pixel=config['rendering']['rgb']['faces_per_pixel'], 
-                    device=device, background_colors=None, light_poses=light_pose, materials=None, camera_settings=camera_settings,
+                    device=device, background_colors=None, NeRF_bgc=NeRF_bgc, light_poses=light_pose, materials=None, camera_settings=camera_settings,
                     sigma=config['rendering']['rgb']['sigma'], gamma=config['rendering']['rgb']['gamma'])[...,:3]
 
             if crop:
                 cropped_prd_image = random_crop(prd_image[0], crop_image_size, x, y)
 
             if(is_render_checkpoint):
-                    grid_x_start = i.item() // col_count * image_size
-                    grid_x_end = grid_x_start + image_size
-                    grid_y_start = (i.item() % col_count)* image_size
-                    grid_y_end = grid_y_start + image_size
+                grid_x_start = i.item() // col_count * image_size
+                grid_x_end = grid_x_start + image_size
+                grid_y_start = (i.item() % col_count)* image_size
+                grid_y_end = grid_y_start + image_size
 
-                    img = (prd_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
-                    prd_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
-
-                    # img = (gt_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
-                    # gt_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+                img = (prd_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+                prd_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+            
+            if(N_IT == 0):
+                img = (gt_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+                gt_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
 
             if config['loss']['lambda_image'] != 0:
                 if crop: 
@@ -250,6 +255,8 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
         else:
             loss_laplacian_smoothing = 0
 
+        # print("Image loss: ", loss_image)
+
         loss =  loss_image * config['loss']['lambda_image'] + \
                 loss_silhouette * config['loss']['lambda_silhouette'] + \
                 loss_velocity * config['loss']['lambda_velocity']  + \
@@ -257,19 +264,25 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
                 loss_normal_consistency * config['loss']['lambda_normal_consistency']+ \
                 loss_laplacian_smoothing * config['loss']['lambda_laplacian_smoothing']
 
-        return mesh.detach(), (float(loss), float(loss_image), float(loss_silhouette), float(loss_velocity), float(loss_edge), float(loss_normal_consistency), float(loss_laplacian_smoothing)), (prd_grid, )
+        return mesh.detach(), (float(loss), float(loss_image), float(loss_silhouette), float(loss_velocity), float(loss_edge), float(loss_normal_consistency), float(loss_laplacian_smoothing)), (prd_grid, ), (gt_grid, )
     
     pbar = tqdm(range(n_iterations))
 
     for N_IT in pbar:
         optimizer.zero_grad()
-        mesh, losses, rendered_images = closure()
+        mesh, losses, rendered_images, gt_images = closure()
         if(N_IT % config['training']['checkpoint_interval'] == 0 or N_IT == n_iterations-1):
             with torch.no_grad():
                 save_models(f'{config["experiment_path"]}/{checkpoint_name}_{N_IT}', brdf_net=brdf_net, shape_net=shape_net, 
                             optimizer=optimizer, meta=dict(loss=losses[0], params=config))
                 writer.add_mesh("Mesh/Pred", mesh.verts_packed().unsqueeze(0), faces=mesh.faces_packed().unsqueeze(0), global_step=N_IT)
-        writer.add_image('Image/Pred', (rendered_images[0]/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+        
+        if(N_IT % config['training']['render_interval'] == 0 or N_IT == n_iterations-1):
+            writer.add_image('Image/Pred', (rendered_images[0]/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+            
+        if(N_IT == 0):
+            writer.add_image('Image/GT', (gt_images[0]/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+        
         writer.add_scalar('Loss/train', losses[0], N_IT)
         optimizer.step()
         pbar.set_description('|'.join(f'{l:.2e}' for l in losses).replace('e', '').replace('|', ' || ', 1))
@@ -280,7 +293,7 @@ def train(config, device, images, silhouettes, rotations, translations, shape_ne
         #     # loaded_data = load_models(f'{config["experiment_path"]}/{checkpoint_name}_{N_IT}')
         #     # loaded_shape_net_state_dict = loaded_data['shape_net']
         #     # shape_net.load_state_dict(loaded_shape_net_state_dict)
-            print("val")
+            print("Validation started...")
             shape_net.eval()
             brdf_net.eval()
             with torch.no_grad():
@@ -393,7 +406,7 @@ if __name__ == '__main__':
         checkpoint_name = 'checkpoint' #######  'diligent_reading'
         
         from dataloader import load_dataset
-        images, silhouettes, R, T, K, transf = load_dataset('data', n_images=config['training']['n_image_per_batch'], device=device)
+        images, silhouettes, cubes, R, T, K, transf = load_dataset('data', n_images=config['training']['n_image_per_batch'], device=device)
         
         images = images.cpu()
 
@@ -417,13 +430,17 @@ if __name__ == '__main__':
         camera_settings_silhouette = pytorch_camera(config['rendering']['silhouette']['image_size'], K)
         camera_settings = pytorch_camera(config['rendering']['rgb']['image_size'], K)
 
+        verts, faces = load_ply("data/mesh.ply")
+        init_mesh = Meshes(verts=[verts], faces=[faces]).to(device)
+
         print("Starting training...")
 
-        losses, N_IT = train(config, device, images, silhouettes, R, T, shape_net, brdf_net, optimizer, config['training']['n_iterations'],  
+        losses, N_IT = train(config, device, images, silhouettes, cubes, R, T, shape_net, brdf_net, optimizer, config['training']['n_iterations'],  
                 call_back=call_back, 
                 light_dirs=None,
                 camera_settings = camera_settings,
-                camera_settings_silhouette=camera_settings_silhouette
+                camera_settings_silhouette=camera_settings_silhouette,
+                init_mesh=None,
                 )
         
         print("Training completed!")

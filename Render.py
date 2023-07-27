@@ -12,7 +12,7 @@ from MerlRendering import HardMerlShader, SoftMerlShader, HardMerlMultiLightsSha
 from utils import r2R
 
 def render_mesh(mesh, modes, rotations, translations, image_size, blur_radius, faces_per_pixel, L0,
-                device, background_colors=None, light_poses=None, materials=None, camera_settings=None, verts_radiance=None, multi_lights=None, ambient_net=None, sigma=1e-4, gamma=1e-4):
+                device, background_colors=None, NeRF_bgc=None, light_poses=None, materials=None, camera_settings=None, verts_radiance=None, multi_lights=None, ambient_net=None, sigma=1e-4, gamma=1e-4):
 
     # if isinstance(modes, str):
     #     return render_mesh(mesh, (modes,), rotations, translations, image_size, blur_radius, faces_per_pixel, 
@@ -37,7 +37,6 @@ def render_mesh(mesh, modes, rotations, translations, image_size, blur_radius, f
         )
     rasterizer = MeshRasterizer(cameras=cameras, raster_settings=raster_settings)
     bgc = (0,0,0) # background color is black
-    NeRF_bgc = None
     blend_params = BlendParams(sigma=sigma, gamma=gamma, background_color=bgc)
     
     t = (-torch.inverse(rotations[0]) @ translations[0])[None] # translation in camera space
