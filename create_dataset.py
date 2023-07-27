@@ -40,7 +40,7 @@ def create(viewpoints, validation = False, name = None):
             'max_intensity': 0.15, #######   read_ing:0.09, budd_ha: 0.15, pot_2: 0.15, co_w: 0.15, bea_r:  0.2
             'sigma': 1e-4, #######
             'gamma': 1e-4, #######
-            'L0': 10 # None
+            'L0': None
         },
         'silhouette':
         {
