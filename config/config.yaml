@@ -9,7 +9,7 @@ training:
     compute_velocity_seperately: True   
     n_pts_per_split: 2048
     sampling_lvl_for_vel_loss: 5
-    n_iterations: 200
+    n_iterations: 1000
     rand_seed: 0
     vertex_grad_clip: 0.1
 sampling:
@@ -35,7 +35,7 @@ rendering:
 validation: 
     angle: None                     # specify an angle of viewpoints
     interval: 20      # interval at which a validation of the network is applied
-    early_stopping: True
+    early_stopping: False
     early_stopping_patience: 1
 loss:   # loss weights
     lambda_image: 1.0

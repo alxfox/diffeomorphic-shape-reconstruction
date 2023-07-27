@@ -127,7 +127,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
             x = np.random.randint(0, max_val)
             y = np.random.randint(0, max_val)
             
-        if(is_render_checkpoint):
+        if(True):
             col_count = config['training']['render_cols']
             img_grid_width = int(col_count * image_size)
             img_grid_height = int(n_images / col_count * image_size)
@@ -142,7 +142,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
             gt_image, gt_silhouette = images[i:i+1], silhouettes[i:i+1]
             gt_cubes = cubes[i:i+1]
 
-            # NeRF_bgc consists of brightness of the gt_cubes images
+            # NeRF_bgc is the image of cubes
             NeRF_bgc = gt_cubes
 
             light_pose = None
