@@ -136,7 +136,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
             prd_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
 
             # gt_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
-            prd_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
+            prd_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.float32)
 
         for i in batch_idx:
             gt_image, gt_silhouette = images[i:i+1], silhouettes[i:i+1]
@@ -175,8 +175,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
                 grid_y_start = (i.item() % col_count)* image_size
                 grid_y_end = grid_y_start + image_size
 
-                img = (prd_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
-                prd_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+                prd_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = prd_image[0].detach().cpu().numpy()
             
             if(N_IT == 0):
                 img = (gt_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
@@ -208,8 +207,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
                 gt_silhouette = torch.unsqueeze(gt_silhouette,3)
 
                 if(is_render_checkpoint):
-                    img = (prd_silhouette[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
-                    prd_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
+                    prd_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = prd_silhouette[0].detach().cpu().numpy()
 
                 loss_tmp = mse(gt_silhouette.cuda(), prd_silhouette) / config['training']['n_image_per_batch']
                 (loss_tmp * config['loss']['lambda_silhouette']).backward(retain_graph=True)
@@ -277,8 +275,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
                             optimizer=optimizer, meta=dict(loss=losses[0], params=config))
                 writer.add_mesh("Mesh/Pred", mesh.verts_packed().unsqueeze(0), faces=mesh.faces_packed().unsqueeze(0), global_step=N_IT)
         
-        if(N_IT % config['training']['render_interval'] == 0 or N_IT == n_iterations-1):
-            writer.add_image('Image/Pred', (rendered_images[0]/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+        writer.add_image('Image/Pred', (rendered_images[0]*255).clip(0,255).astype(np.uint8), dataformats="HWC", global_step=N_IT)
             
         if(N_IT == 0):
             writer.add_image('Image/GT', (gt_images[0]/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
@@ -293,7 +290,9 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
         #     # loaded_data = load_models(f'{config["experiment_path"]}/{checkpoint_name}_{N_IT}')
         #     # loaded_shape_net_state_dict = loaded_data['shape_net']
         #     # shape_net.load_state_dict(loaded_shape_net_state_dict)
-            print("Validation started...")
+        
+            print("Validation starts...")
+            
             shape_net.eval()
             brdf_net.eval()
             with torch.no_grad():
@@ -324,7 +323,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
                     writer.add_scalar('Loss/val_below', float(loss_val3), N_IT)
                     writer.add_image('Image/Pred_below', (prd/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
                     loss_val = float(loss_val1)+float(loss_val2)+float(loss_val3)
-                loss_val = losses[0]+ loss_val
+                
 
                 if config['validation']['early_stopping'] == True and early_stopper.early_stop(loss_val):
                     print("Early stopping at iter:", N_IT)
