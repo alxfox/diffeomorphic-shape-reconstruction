@@ -40,7 +40,7 @@ def create(viewpoints, validation = False, name = None):
             'max_intensity': 0.15, #######   read_ing:0.09, budd_ha: 0.15, pot_2: 0.15, co_w: 0.15, bea_r:  0.2
             'sigma': 1e-4, #######
             'gamma': 1e-4, #######
-            'L0': 10
+            'L0': 10 # set this to none when creating dataset of cubes only
         },
         'silhouette':
         {
@@ -70,6 +70,10 @@ def create(viewpoints, validation = False, name = None):
     images = []
     silhouettes =[]
     max_val = 0
+    if(validation): 
+        f = open('store.pckl', 'rb')
+        params['rendering.rgb.L0'] = pickle.load(f).item()
+        f.close()
 
     for i in range(n_images):
         prd_image = render_mesh(mesh, 
@@ -98,12 +102,11 @@ def create(viewpoints, validation = False, name = None):
         silhouettes.append(sh_image)
 
     # Comment out these lines when creating dataset of cubes only
-
-    new_L0 = params['rendering.rgb.L0']/max_val
-
-    f = open('store.pckl', 'wb')
-    pickle.dump(new_L0, f)
-    f.close()
+    if(not validation):
+        new_L0 = params['rendering.rgb.L0']/max_val
+        f = open('store.pckl', 'wb')
+        pickle.dump(new_L0, f)
+        f.close()
 
     path = './data/dataset'
     if os.path.exists(path)== False:
