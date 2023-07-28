@@ -50,17 +50,21 @@ def load_dataset(path_str, device, n_images=30, max_faces_no=None):
         T[i] = torch.from_numpy(cameras["T_"+str(i)]).float()
     K = torch.from_numpy(cameras["K"]).float().to(device)
     images = torch.from_numpy(np.stack([\
-                     cv2.imread(f'{path_str}/dataset/render_{j:02}.png', -1)[...,::-1].astype(np.float32) \
-                for j in range(n_images)], axis=0)).to(device)[...,:3]/(256**2-1)
+                    cv2.imread(f'{path_str}/dataset/cubesmesh_render_{j:02}.png', -1)[...,::-1].astype(np.float32) \
+                    for j in range(n_images)], axis=0)).to(device)[...,:3]/(256**2-1)
     # imgs = imgs / lights_ints.reshape(lights_ints.shape[0], 1, 1, lights_ints.shape[1]) / 65535
 
     masks = torch.from_numpy(np.stack([\
                             (cv2.imread(f'{path_str}/dataset/mask_{j:02}.png', -1)).astype(np.float32)\
-                             for j in range(n_images)], axis=0)).to(device)/(256**2-1)
+                            for j in range(n_images)], axis=0)).to(device)/(256**2-1)
     # normal = scipy.io.loadmat(f'{path_str}/view_{view_id:02}/Normal_gt.mat')['Normal_gt'].astype(np.float32)
 
+    cubes = torch.from_numpy(np.stack([\
+                    cv2.imread(f'{path_str}/dataset/cubes_render_{j:02}.png', -1)[...,::-1].astype(np.float32) \
+                    for j in range(n_images)], axis=0)).to(device)[...,:3]/(256**2-1)
+
     # colocated_mask = (light_dirs[...,-1] > 0.65)
-    return images, masks, R, T, K, None #, transf
+    return images, masks, cubes, R, T, K, None #, transf
     # return make_torch_tensor(imgs.astype(np.float32)[colocated_mask], 
     #     mask.astype(np.float32), (light_dirs[colocated_mask]@np.diag([1,-1,-1])@R).astype(np.float32), view_dirs[colocated_mask], normal, K, P)
 def load_val_dataset(path_str, device, n_images=30, viewpoints_name =None, max_faces_no=None):

@@ -17,7 +17,7 @@ from os.path import isfile, join
 
 def create(viewpoints, validation = False, name = None):
     device = torch.device("cuda:0")
-    verts, faces = load_ply("data/cubemesh.ply")
+    verts, faces = load_ply("data/cubes.ply")
     viewpoints = np.load(join('data',viewpoints))
    
 
@@ -40,7 +40,7 @@ def create(viewpoints, validation = False, name = None):
             'max_intensity': 0.15, #######   read_ing:0.09, budd_ha: 0.15, pot_2: 0.15, co_w: 0.15, bea_r:  0.2
             'sigma': 1e-4, #######
             'gamma': 1e-4, #######
-            'L0': 10 # set this to none when creating dataset of cubes only
+            'L0': None
         },
         'silhouette':
         {
@@ -70,10 +70,10 @@ def create(viewpoints, validation = False, name = None):
     images = []
     silhouettes =[]
     max_val = 0
-    if(validation): 
-        f = open('store.pckl', 'rb')
-        params['rendering.rgb.L0'] = pickle.load(f).item()
-        f.close()
+
+    f = open('store.pckl', 'rb')
+    params['rendering.rgb.L0'] = pickle.load(f).item()
+    f.close()
 
     for i in range(n_images):
         prd_image = render_mesh(mesh, 
@@ -101,27 +101,20 @@ def create(viewpoints, validation = False, name = None):
                         sigma=params['rendering.silhouette.sigma'], gamma=params['rendering.silhouette.gamma'])
         silhouettes.append(sh_image)
 
-    # Comment out these lines when creating dataset of cubes only
-    if(not validation):
-        new_L0 = params['rendering.rgb.L0']/max_val
-        f = open('store.pckl', 'wb')
-        pickle.dump(new_L0, f)
-        f.close()
-
     path = './data/dataset'
     if os.path.exists(path)== False:
         os.mkdir(path)
     
     for i in range(n_images):
     # images are saved to out as a png    
-        img = (images[i]/max_val*((256**2)-1)).cpu().numpy().astype(np.uint16)[0]
+        img = (images[i]*((256**2)-1)).cpu().numpy().astype(np.uint16)[0]
         imgsh = (silhouettes[i]*((256**2)-1)).cpu().numpy().astype(np.uint16)
         #writer.append_data(img)
         if (validation):
-            cv2.imwrite(f"./data/dataset/cubesmesh_render_{name}{i:02}.png", img)
+            cv2.imwrite(f"./data/dataset/cubes_render_{name}{i:02}.png", img)
         else:
-            cv2.imwrite(f"./data/dataset/cubesmesh_render_{i:02}.png", img)
-            cv2.imwrite(f"./data/dataset/cubesmesh_mask_{i:02}.png", imgsh)
+            cv2.imwrite(f"./data/dataset/cubes_render_{i:02}.png", img)
+            cv2.imwrite(f"./data/dataset/cubes_mask_{i:02}.png", imgsh)
         
         
     

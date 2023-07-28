@@ -4,5 +4,5 @@ out/
 data/dataset
 .gitignore
 store.pckl
-requirements.txt
+*requirements.txt
 *.sbatch
