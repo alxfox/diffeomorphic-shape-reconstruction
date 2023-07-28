@@ -126,14 +126,14 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
             max_val = image_size - crop_image_size
             x = np.random.randint(0, max_val)
             y = np.random.randint(0, max_val)
-            
-        if(True):
+        
+        if is_render_checkpoint:
             col_count = config['training']['render_cols']
             img_grid_width = int(col_count * image_size)
             img_grid_height = int(n_images / col_count * image_size)
 
             gt_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
-            prd_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
+            prd_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.float32)
 
             # gt_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
             prd_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.float32)
