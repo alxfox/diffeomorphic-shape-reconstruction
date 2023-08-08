@@ -102,7 +102,7 @@ def _apply_lighting_cook_torrance(
     falloff = torch.where(visible_mask, falloff, torch.zeros(1, device=falloff.device)) # (N, P) cosine falloff, 0 if not visible
 
     diffuse_albedo = textures[...,0:3]
-    if name != 'cube':
+    if name != 'dataset':
         diffuse_albedo[:] = 1
     n_lobes = (textures.shape[-1] - 3) // 3
     assert n_lobes*3+3 == textures.shape[-1]

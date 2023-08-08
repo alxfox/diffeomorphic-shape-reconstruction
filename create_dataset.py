@@ -85,7 +85,7 @@ def create(viewpoints, validation = False, name = None):
                                 faces_per_pixel=params['rendering.rgb.faces_per_pixel'], 
                                 L0=params['rendering.rgb.L0'],
                                 device=device, background_colors=None, light_poses=None, materials=None, camera_settings=camera_settings,
-                                sigma=params['rendering.rgb.sigma'], gamma=params['rendering.rgb.gamma'])
+                                sigma=params['rendering.rgb.sigma'], gamma=params['rendering.rgb.gamma'], name='dataset')
         prd_image = prd_image[...,:3]
         images.append(prd_image)
         max_val = max(max_val,prd_image.max())
