@@ -12,7 +12,7 @@ from MerlRendering import HardMerlShader, SoftMerlShader, HardMerlMultiLightsSha
 from utils import r2R
 
 def render_mesh(mesh, modes, rotations, translations, image_size, blur_radius, faces_per_pixel, L0,
-                device, background_colors=None, NeRF_bgc=None, light_poses=None, materials=None, camera_settings=None, verts_radiance=None, multi_lights=None, ambient_net=None, sigma=1e-4, gamma=1e-4):
+                device, background_colors=None, NeRF_bgc=None, light_poses=None, materials=None, camera_settings=None, verts_radiance=None, multi_lights=None, ambient_net=None, sigma=1e-4, gamma=1e-4, name=None):
 
     # if isinstance(modes, str):
     #     return render_mesh(mesh, (modes,), rotations, translations, image_size, blur_radius, faces_per_pixel, 
@@ -41,7 +41,7 @@ def render_mesh(mesh, modes, rotations, translations, image_size, blur_radius, f
     
     t = (-torch.inverse(rotations[0]) @ translations[0])[None] # translation in camera space
     if modes == 'image_ct':
-        shader = SoftCookTorranceShader(device=device, cameras=cameras, blend_params=blend_params, NeRF_bgc=NeRF_bgc)      
+        shader = SoftCookTorranceShader(device=device, cameras=cameras, blend_params=blend_params, NeRF_bgc=NeRF_bgc, name=name)      
         lights = PointLights(device=device, location=translations[0][None],diffuse_color=torch.tensor([[L0,L0,L0]], device=device))
         fragments = rasterizer(mesh, R=rotations, T=t)
         images = shader(fragments, mesh, lights=lights)

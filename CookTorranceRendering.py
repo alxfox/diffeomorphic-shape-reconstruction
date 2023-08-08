@@ -27,7 +27,7 @@ def dot(tensor1, tensor2, dim=-1, keepdim=False, non_negative=False, epsilon=1e-
     return x
 
 
-def _cook_torrance_shading(normal_vecs, incident_vecs, view_vecs, roughness, r0=None, epsilon=1e-10):
+def _cook_torrance_shading(normal_vecs, incident_vecs, view_vecs, roughness, r0=None, epsilon=1e-10, name=None):
     '''
     normal_vecs, incident_vecs, view_vecs: (...,3) normalised vectors
     roughness: (...,k_lobes) rms slope
@@ -66,7 +66,7 @@ def _cook_torrance_shading(normal_vecs, incident_vecs, view_vecs, roughness, r0=
     return (D*F*G) / (np.pi*i_n*v_n).unsqueeze(dim=-1) # (..., k_lobes)
 
 def _apply_lighting_cook_torrance(
-    points, normals, lights, cameras, materials, textures, eps=1e-12
+    points, normals, lights, cameras, materials, textures, name=None, eps=1e-12
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Args:
@@ -102,7 +102,8 @@ def _apply_lighting_cook_torrance(
     falloff = torch.where(visible_mask, falloff, torch.zeros(1, device=falloff.device)) # (N, P) cosine falloff, 0 if not visible
 
     diffuse_albedo = textures[...,0:3]
-    diffuse_albedo[:] = 1
+    if name != 'cube':
+        diffuse_albedo[:] = 1
     n_lobes = (textures.shape[-1] - 3) // 3
     assert n_lobes*3+3 == textures.shape[-1]
     # roughness = textures[...,3:3+n_lobes]
@@ -160,7 +161,7 @@ def apply_lighting_cook_torrance(
 
     return falloff, specular_reflectance * falloff, forward_facing
 
-def cook_torrance_shading(meshes, fragments, lights, cameras, materials, texels) -> torch.Tensor:
+def cook_torrance_shading(meshes, fragments, lights, cameras, materials, texels, name=None) -> torch.Tensor:
     """
     Apply per pixel shading. First interpolate the vertex normals and
     vertex coordinates using the barycentric coordinates to get the position
@@ -196,7 +197,7 @@ def cook_torrance_shading(meshes, fragments, lights, cameras, materials, texels)
     # texels = texels[...,0:1,:].expand(texels.shape) # use obly the nearest face's texture for blending
     texels = texels.reshape(pixel_normals.shape[:-1]+(-1,))
     diffuse, opacity = _apply_lighting_cook_torrance(
-        pixel_coords, pixel_normals, lights, cameras, materials, texels,
+        pixel_coords, pixel_normals, lights, cameras, materials, texels, name
     )
     colors = diffuse 
     colors = colors.reshape(i_shape[:-1] + (-1,))
@@ -364,7 +365,7 @@ class SoftCookTorranceShader(nn.Module):
     """
 
     def __init__(
-        self, device="cpu", cameras=None, lights=None, materials=None, blend_params=None, NeRF_bgc=None
+        self, device="cpu", cameras=None, lights=None, materials=None, blend_params=None, NeRF_bgc=None, name=None
     ):
         super().__init__()
         self.lights = lights if lights is not None else PointLights(device=device)
@@ -374,6 +375,7 @@ class SoftCookTorranceShader(nn.Module):
         self.cameras = cameras
         self.blend_params = blend_params if blend_params is not None else BlendParams()
         self.NeRF_bgc = NeRF_bgc
+        self.name = name
 
     def forward(self, fragments, meshes, **kwargs) -> torch.Tensor:
         cameras = kwargs.get("cameras", self.cameras)
@@ -387,6 +389,7 @@ class SoftCookTorranceShader(nn.Module):
         materials = kwargs.get("materials", self.materials)
         blend_params = kwargs.get("blend_params", self.blend_params)
         NeRF_bgc = kwargs.get("NeRF_bgc", self.NeRF_bgc)
+        name = kwargs.get("name", self.name)
         colors, opacity = cook_torrance_shading(
             meshes=meshes,
             fragments=fragments,
@@ -394,6 +397,7 @@ class SoftCookTorranceShader(nn.Module):
             lights=lights,
             cameras=cameras,
             materials=materials,
+            name=name
         )
         # if max_radiance is not None:
         #     colors = torch.clamp_max(colors, max_radiance)
@@ -548,7 +552,7 @@ class SoftTextureShader(nn.Module):
         return images
 
 def softmax_rgb_blend(
-    colors, opacity, fragments, blend_params, NeRF_bgc=None, znear: float = 1.0, zfar: float = 100
+    colors, opacity, fragments, blend_params, NeRF_bgc=None, name=None, znear: float = 1.0, zfar: float = 100
 ) -> torch.Tensor:
     """
     RGB and alpha channel blending to return an RGBA image based on the method
