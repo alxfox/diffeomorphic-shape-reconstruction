@@ -55,7 +55,7 @@ def load_dataset(path_str, device, n_images=30, max_faces_no=None):
     # imgs = imgs / lights_ints.reshape(lights_ints.shape[0], 1, 1, lights_ints.shape[1]) / 65535
 
     masks = torch.from_numpy(np.stack([\
-                            (cv2.imread(f'{path_str}/dataset/cubemesh_mask_{j:02}.png', -1)).astype(np.float32)\
+                            (cv2.imread(f'{path_str}/dataset/cubesmesh_mask_{j:02}.png', -1)).astype(np.float32)\
                             for j in range(n_images)], axis=0)).to(device)/(256**2-1)
     # normal = scipy.io.loadmat(f'{path_str}/view_{view_id:02}/Normal_gt.mat')['Normal_gt'].astype(np.float32)
 
@@ -83,14 +83,19 @@ def load_val_dataset(path_str, device, n_images=30, viewpoints_name =None, max_f
         T[i] = torch.from_numpy(cameras["T_"+str(i)]).float()
     K = torch.from_numpy(cameras["K"]).float().to(device)
     images = torch.from_numpy(np.stack([\
-                     cv2.imread(f'{path_str}/dataset/render_{viewpoints_name}{j:02}.png', -1)[...,::-1].astype(np.float32) \
+                     cv2.imread(f'{path_str}/dataset/cubesmesh_render_{viewpoints_name}{j:02}.png', -1)[...,::-1].astype(np.float32) \
                 for j in range(n_images)], axis=0)).to(device)[...,:3]/(256**2-1)
    
     masks = torch.from_numpy(np.stack([\
-                            (cv2.imread(f'{path_str}/dataset/mask_{j:02}.png', -1)).astype(np.float32)\
-                             for j in range(n_images)], axis=0)).to(device)/(256**2-1)
+                     cv2.imread(f'{path_str}/dataset/cubesmesh_mask_{j:02}.png', -1).astype(np.float32)\
+                for j in range(n_images)], axis=0)).to(device)/(256**2-1)
+    
+    cubes = torch.from_numpy(np.stack([\
+                    cv2.imread(f'{path_str}/dataset/cubes_render_{viewpoints_name}{j:02}.png', -1)[...,::-1].astype(np.float32) \
+                for j in range(n_images)], axis=0)).to(device)[...,:3]/(256**2-1)
 
-    return images, masks, R, T, K, None #, transf
+
+    return images, masks, cubes, R, T, K, None #, transf
     
 @torch.no_grad()
 def diligent_eval(verts, faces, gt_verts, gt_faces, path, transf, K, Ps, masks=None, mode='normal', transform_verts=False, normals=None):
