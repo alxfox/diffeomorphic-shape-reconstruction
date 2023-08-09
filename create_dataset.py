@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import pytorch3d
+from pytorch3d.structures import join_meshes_as_scene
 from pytorch3d.io import load_ply
 from pytorch3d.io import load_obj
 import matplotlib.pyplot as plt
@@ -17,16 +18,17 @@ from os.path import isfile, join
 
 def create(viewpoints, validation = False, name = None):
     device = torch.device("cuda:0")
-    verts, faces = load_ply("data/cubemesh.ply")
     viewpoints = np.load(join('data',viewpoints))
-   
-
-    verts_rgb = torch.ones_like(verts)[None]  # color the mesh white
-    #mesh = Meshes(verts=[verts], faces=[faces.verts_idx], vert_textures=verts_rgb.to(device)).to(device)
-    mesh = Meshes(verts=[verts.to(device)], faces=[faces.to(device)], vert_textures=verts_rgb.to(device))
-
     
+    verts, faces = load_ply("data/cubes.ply")
+    verts_rgb = (torch.ones_like(verts)*torch.tensor([0,1,0]))[None]  # color the cubes green
+    cube = Meshes(verts=[verts.to(device)], faces=[faces.to(device)], vert_textures=verts_rgb.to(device))
 
+    verts, faces = load_ply("data/mesh.ply")
+    verts_rgb = torch.ones_like(verts)[None] # color the bunny white
+    bunny = Meshes(verts=[verts.to(device)], faces=[faces.to(device)], vert_textures=verts_rgb.to(device))
+
+    mesh = join_meshes_as_scene([bunny, cube], include_textures=True)
     
     params = dotty({
     'device': torch.device("cuda"),
