@@ -117,17 +117,17 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
             max_val = image_size - crop_image_size
             x = np.random.randint(0, max_val)
             y = np.random.randint(0, max_val)
-        
-        if is_render_checkpoint:
-            col_count = config['training']['render_cols']
-            img_grid_width = int(col_count * image_size)
-            img_grid_height = int(n_images / col_count * image_size)
 
-            gt_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
-            prd_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.float32)
+        # if is_render_checkpoint:
+        col_count = config['training']['render_cols']
+        img_grid_width = int(col_count * image_size)
+        img_grid_height = int(n_images / col_count * image_size)
 
-            # gt_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
-            prd_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.float32)
+        gt_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
+        prd_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.float32)
+
+        # gt_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
+        prd_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.float32)
 
         for i in batch_idx:
             gt_image, gt_silhouette = images[i:i+1], silhouettes[i:i+1]
@@ -265,8 +265,8 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
                 save_models(f'{config["experiment_path"]}/{checkpoint_name}_{N_IT}', brdf_net=brdf_net, shape_net=shape_net, 
                             optimizer=optimizer, meta=dict(loss=losses[0], params=config))
                 writer.add_mesh("Mesh/Pred", mesh.verts_packed().unsqueeze(0), faces=mesh.faces_packed().unsqueeze(0), global_step=N_IT)
-        
-        writer.add_image('Image/Pred', (rendered_images[0]*255).clip(0,255).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+        if(N_IT % config['training']['render_interval'] == 0 or N_IT == n_iterations - 1):
+            writer.add_image('Image/Pred', (rendered_images[0]*255).clip(0,255).astype(np.uint8), dataformats="HWC", global_step=N_IT)
             
         if(N_IT == 0):
             writer.add_image('Image/GT', (gt_images[0]/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
