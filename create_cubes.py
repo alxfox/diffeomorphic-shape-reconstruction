@@ -2,7 +2,8 @@ import numpy as np
 import torch
 import pytorch3d
 from pytorch3d.io import load_ply
-from pytorch3d.io import load_obj
+from pytorch3d.io import load_obj, load_objs_as_meshes
+from pytorch3d.renderer import  TexturesUV, TexturesVertex
 import matplotlib.pyplot as plt
 import imageio
 from Render import render_mesh
@@ -17,16 +18,11 @@ from os.path import isfile, join
 
 def create(viewpoints, validation = False, name = None):
     device = torch.device("cuda:0")
-    verts, faces = load_ply("data/cubes.ply")
     viewpoints = np.load(join('data',viewpoints))
-   
 
-    verts_rgb = torch.ones_like(verts)[None]  # color the mesh white
-    #mesh = Meshes(verts=[verts], faces=[faces.verts_idx], vert_textures=verts_rgb.to(device)).to(device)
+    verts, faces = load_ply("data/cubes.ply")
+    verts_rgb = (torch.ones_like(verts)*torch.tensor([0,1,0]))[None] #  # color the cubes green
     mesh = Meshes(verts=[verts.to(device)], faces=[faces.to(device)], vert_textures=verts_rgb.to(device))
-
-    
-
     
     params = dotty({
     'device': torch.device("cuda"),
@@ -116,8 +112,6 @@ def create(viewpoints, validation = False, name = None):
             cv2.imwrite(f"./data/dataset/cubes_render_{i:02}.png", img)
             cv2.imwrite(f"./data/dataset/cubes_mask_{i:02}.png", imgsh)
         
-        
-    
     
 if __name__ == '__main__':
      
