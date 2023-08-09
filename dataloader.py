@@ -1,17 +1,16 @@
-from multiprocessing.sharedctypes import Value
 import numpy as np
 import torch
 import scipy
 import scipy.io
 import cv2
 import trimesh
-import sys
-from utils import dotty, P_matrix_to_rot_trans_vectors, pytorch_camera
+import pytorch3d
+from utils import P_matrix_to_rot_trans_vectors, pytorch_camera
 from Render import render_mesh
 from Meshes import Meshes
 from utils import save_images
-import pytorch3d
 from Loss import chamfer_3d
+
 
 def make_torch_tensor(*args):
     return tuple(torch.tensor(a).cuda() for a in args)
@@ -32,10 +31,6 @@ def load_mesh(path_str, name_str):
     return (verts - shift) / scale, faces, transf
 
 def load_dataset(path_str, device, n_images=30, max_faces_no=None):
-    # lights_ints = np.loadtxt(f'{path_str}/view_{view_id:02}/light_intensities.txt').astype(np.float32)
-    # light_dirs = np.loadtxt(f'{path_str}/view_{view_id:02}/light_directions.txt')#@np.diag([-1,1,1])
-    # light_dirs = light_dirs.astype(np.float32)
-    
     cameras = np.load(f'{path_str}/cameras1.npz')
 
     R = torch.zeros((n_images, 3, 3), device=device)
@@ -48,25 +43,23 @@ def load_dataset(path_str, device, n_images=30, max_faces_no=None):
         new_rotation = old_rotation @ extra_rotation
         R[i] = new_rotation
         T[i] = torch.from_numpy(cameras["T_"+str(i)]).float()
+    
     K = torch.from_numpy(cameras["K"]).float().to(device)
+
     images = torch.from_numpy(np.stack([\
                     cv2.imread(f'{path_str}/dataset/cubesmesh_render_{j:02}.png', -1)[...,::-1].astype(np.float32) \
                     for j in range(n_images)], axis=0)).to(device)[...,:3]/(256**2-1)
-    # imgs = imgs / lights_ints.reshape(lights_ints.shape[0], 1, 1, lights_ints.shape[1]) / 65535
 
     masks = torch.from_numpy(np.stack([\
                             (cv2.imread(f'{path_str}/dataset/cubesmesh_mask_{j:02}.png', -1)).astype(np.float32)\
                             for j in range(n_images)], axis=0)).to(device)/(256**2-1)
-    # normal = scipy.io.loadmat(f'{path_str}/view_{view_id:02}/Normal_gt.mat')['Normal_gt'].astype(np.float32)
 
     cubes = torch.from_numpy(np.stack([\
                     cv2.imread(f'{path_str}/dataset/cubes_render_{j:02}.png', -1)[...,::-1].astype(np.float32) \
                     for j in range(n_images)], axis=0)).to(device)[...,:3]/(256**2-1)
 
-    # colocated_mask = (light_dirs[...,-1] > 0.65)
-    return images, masks, cubes, R, T, K, None #, transf
-    # return make_torch_tensor(imgs.astype(np.float32)[colocated_mask], 
-    #     mask.astype(np.float32), (light_dirs[colocated_mask]@np.diag([1,-1,-1])@R).astype(np.float32), view_dirs[colocated_mask], normal, K, P)
+    return images, masks, cubes, R, T, K, None
+
 def load_val_dataset(path_str, device, n_images=30, viewpoints_name =None, max_faces_no=None):
     
     cameras = np.load(f'{path_str}/cameras_{viewpoints_name}.npz')
@@ -81,7 +74,9 @@ def load_val_dataset(path_str, device, n_images=30, viewpoints_name =None, max_f
         new_rotation = old_rotation @ extra_rotation
         R[i] = new_rotation
         T[i] = torch.from_numpy(cameras["T_"+str(i)]).float()
+    
     K = torch.from_numpy(cameras["K"]).float().to(device)
+
     images = torch.from_numpy(np.stack([\
                      cv2.imread(f'{path_str}/dataset/cubesmesh_render_{viewpoints_name}{j:02}.png', -1)[...,::-1].astype(np.float32) \
                 for j in range(n_images)], axis=0)).to(device)[...,:3]/(256**2-1)
@@ -95,7 +90,7 @@ def load_val_dataset(path_str, device, n_images=30, viewpoints_name =None, max_f
                 for j in range(n_images)], axis=0)).to(device)[...,:3]/(256**2-1)
 
 
-    return images, masks, cubes, R, T, K, None #, transf
+    return images, masks, cubes, R, T, K, None
     
 @torch.no_grad()
 def diligent_eval(verts, faces, gt_verts, gt_faces, path, transf, K, Ps, masks=None, mode='normal', transform_verts=False, normals=None):
@@ -116,10 +111,9 @@ def diligent_eval(verts, faces, gt_verts, gt_faces, path, transf, K, Ps, masks=N
             verts = (verts - T.unsqueeze(-2)) @ torch.inverse(R).transpose(-1,-2)
             if normals is not None:
                 normals = normals @ torch.inverse(R).transpose(-1,-2)
-            
 
     estimates = render_mesh(Meshes(verts=[verts], faces=[faces], verts_normals=([normals] if normals is not None else None)), 
-                        modes=mode, #######
+                        modes=mode,
                         rotations=r, 
                         translations=t, 
                         image_size=512, 
@@ -129,7 +123,7 @@ def diligent_eval(verts, faces, gt_verts, gt_faces, path, transf, K, Ps, masks=N
                         sigma=1e-4, gamma=1e-4)
 
     ground_truths = render_mesh(Meshes(verts=[gt_verts], faces=[gt_faces]), 
-                        modes=mode, #######
+                        modes=mode,
                         rotations=r, 
                         translations=t, 
                         image_size=512, 
@@ -167,7 +161,6 @@ def diligent_eval(verts, faces, gt_verts, gt_faces, path, transf, K, Ps, masks=N
     error[~fg_masks] = 0
 
     return error, fg_masks
-
 
 def eval_normal(path_str, name_str, method):
     path = f'{path_str}/mvpmsData/{name_str}PNG'

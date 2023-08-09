@@ -1,8 +1,9 @@
 import torch
 import numpy as np
-from torch.functional import norm
 from CookTorranceRendering import apply_lighting_cook_torrance
 from utils import sample_lights_from_equirectangular_image
+
+
 def activation_2nd_ord(func, x, dx_dh=None, d2x_dh2=None):
     '''
     func must be element-wise activation
@@ -111,7 +112,6 @@ def sine_init(m):
             # See supplement Sec. 1.5 for discussion of factor 30
             m.weight.uniform_(-np.sqrt(6 / num_input), np.sqrt(6 / num_input))
 
-
 def first_layer_sine_init(m):
     with torch.no_grad():
         if hasattr(m, 'weight'):
@@ -156,7 +156,6 @@ class MLP(torch.nn.Module):
             x, dx_dh, d2x_dh2 = activation_2nd_ord(activation, x, dx_dh, d2x_dh2)
         return x, dx_dh, d2x_dh2
 
-
 class PositionEncoding(MLP):
     def __init__(self, W, output_weight=None):
         '''
@@ -181,6 +180,7 @@ class PositionEncoding(MLP):
             self.output_weight = torch.nn.Parameter(torch.cat((output_weight,output_weight), dim=0), requires_grad=False)
         else:
             self.output_weight = None
+    
     def forward(self, *args):
         x, dx_dh, d2x_dh2 = super(PositionEncoding, self).forward(*args)
         if self.output_weight is None:
@@ -193,11 +193,10 @@ class PositionEncoding(MLP):
                 d2x_dh2 = d2x_dh2 * self.output_weight.reshape(-1,1)
             return x, dx_dh, d2x_dh2
 
-
-        
 class ResNet(MLP):
     def __init__(self, h_dims, activations):
         super(ResNet, self).__init__(h_dims[-1], h_dims, activations)
+    
     def forward(self, x, dx_dh=None, d2x_dh2=None):
         y, dy_dh, d2y_dy2 = super(ResNet, self).forward(x, dx_dh, d2x_dh2)
         y = y + x
@@ -212,11 +211,11 @@ class Sequential(MLP):
         super(Sequential, self).__init__()
         self.mlps = torch.nn.ModuleList(mlps)
         self.in_dim, self.out_dim = mlps[0].in_dim, mlps[-1].out_dim
+    
     def forward(self, x, dx_dh=None, d2x_dh2=None):
         for mlp in self.mlps:
             x, dx_dh, d2x_dh2 = mlp(x, dx_dh, d2x_dh2)
         return x, dx_dh, d2x_dh2
-
 
 class ShapeNet(torch.nn.Module):
     def __init__(self, velocity_mlp, T):
@@ -224,6 +223,7 @@ class ShapeNet(torch.nn.Module):
         # assert velocity_mlp.in_dim == velocity_mlp.out_dim
         self.T = T
         self.velocity_mlp = velocity_mlp
+    
     def forward(self, x, compute_derivative=0, compute_normals=False, source_normals=None):
         '''
         x must be of shape ([n_batch], ndim)
@@ -282,6 +282,7 @@ class BRDFNet(torch.nn.Module):
         self.brdf_mlp = brdf_mlp
         self.n_lobes = brdf_mlp.out_dim // 3 - 1
         self.constant_fresnel = constant_fresnel
+    
     def _activation(self):
         def acti_func(x):
             n_lobes = self.n_lobes
@@ -306,6 +307,7 @@ class NormalNet(torch.nn.Module):
     def __init__(self, normal_mlp):
         super(NormalNet, self).__init__()
         self.normal_mlp = normal_mlp
+    
     def forward(self, x):
         return torch.nn.functional.normalize(self.normal_mlp(x)[0], dim=-1)
 
@@ -315,6 +317,7 @@ class AmbientReflectionNet(torch.nn.Module):
         super().__init__()
         self.diffuse_mlp = diffuse_mlp
         self.specular_mlp = specular_mlp
+    
     def forward(self, normals, view_dirs, roughness, r0):
         assert roughness.shape[-1] == 1 and r0.shape[-1] == 1
         # TODO: add support to multi lobes
@@ -430,6 +433,3 @@ class AmbientReflectionNet(torch.nn.Module):
         colors = diffuse_color + specular_color
         
         return colors, forward_facing
-
-
-

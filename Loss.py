@@ -1,11 +1,15 @@
 import torch
 import pytorch3d
-#import kornia
-from torch.nn.functional import mse_loss as mse
+# import kornia
 import pytorch3d
 import pytorch3d.loss
 import numpy as np
 import cv2
+import torch
+from pytorch3d.ops.knn import knn_points
+from torch.nn.functional import mse_loss as mse
+
+
 def velocity_loss(v_arr, d2v_dh2_arr, alpha=0.01):
     '''
     compute regularization term
@@ -42,27 +46,16 @@ def clipped_mse(x, y, max_val=1, edge_lambda=None):
     diff = torch.where(mask, torch.zeros_like(diff), diff)
     loss = diff.mean()
     if edge_lambda is not None and edge_lambda != 0:
-        edge_mse = mse( kornia.filters.spatial_gradient(x.clamp_max(1).permute(0,3,1,2)), 
-                        kornia.filters.spatial_gradient(y.clamp_max(1).permute(0,3,1,2)) )
+        edge_mse = mse(kornia.filters.spatial_gradient(x.clamp_max(1).permute(0,3,1,2)), 
+                        kornia.filters.spatial_gradient(y.clamp_max(1).permute(0,3,1,2)))
         loss = loss + edge_lambda * edge_mse
     return loss
-
-
 
 def clipped_mae(x, y, max_val=1):
     diff = (x - y).abs()
     img = (diff[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
     cv2.imwrite(f"./out/diff.png", img)
     return diff.mean()
-# def clipped_mae(x, y, max_val=1):
-#     # x = x / max_val
-#     # y = y / max_val
-#     # mask = (x >= 1) & (y >= 1)
-#     # diff = (x - y).abs()
-#     diff = (x-y).abs()
-#     img = (diff[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
-#     cv2.imwrite(f"./out/diff.png", img)
-#     return diff.sum()
 
 def clipped_shadow(x, y, max_val=1, min_val=0.1):
     x = x / max_val
@@ -73,14 +66,6 @@ def clipped_shadow(x, y, max_val=1, min_val=0.1):
     y = diff.abs().clamp_max(min_val)
     diff = torch.where((x>=min_val), (diff**2), 2*y*diff.abs()-y**2 )
     return diff.mean()
-
-
-from typing import Union
-
-import torch
-import torch.nn.functional as F
-from pytorch3d.ops.knn import knn_gather, knn_points
-from pytorch3d.structures.pointclouds import Pointclouds
 
 def chamfer_3d(x, y, z_tresh=0):
 
@@ -100,7 +85,6 @@ def chamfer_3d(x, y, z_tresh=0):
     cham_x = torch.sqrt(x_nn.dists[..., 0])  # (N, P1)
     cham_y = torch.sqrt(y_nn.dists[..., 0])  # (N, P1)
     
-
     # Apply point reduction
     cham_x = cham_x.mean(1)  # (N,)
     cham_y = cham_y.mean(1)  # (N,)

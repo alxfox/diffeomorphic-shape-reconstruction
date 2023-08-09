@@ -1,12 +1,11 @@
 import os
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
-from pytorch3d.io import load_ply, load_obj
+from pytorch3d.io import load_ply
 import pytorch3d
 import torch
 import numpy as np
-from Synthetic import synthesize_imgs, random_RT
-from Loss import velocity_loss, clipped_mae, chamfer_3d
+from Loss import velocity_loss, clipped_mae
 from torch.nn.functional import mse_loss as mse
 from Render import render_mesh
 from Model import MLP, PositionEncoding, ResNet, Sequential, ShapeNet, BRDFNet
@@ -15,12 +14,10 @@ from os.path import isfile, join
 from utils import manual_seed, rand_ico_sphere, save_models, load_models
 from Meshes import Meshes
 from tqdm import tqdm
-import h5py
 import trimesh
 from Model import MLP, PositionEncoding, Sequential, ShapeNet, BRDFNet
 from itertools import chain
-from utils import dotty, sample_lights_from_equirectangular_image, save_images, random_dirs, P_matrix_to_rot_trans_vectors, pytorch_camera, compile_video, random_crop
-import cv2
+from utils import dotty, pytorch_camera, random_crop
 import os
 from diligent import diligent_eval_chamfer
 import pickle
@@ -29,7 +26,9 @@ import uuid
 from torch.utils.tensorboard import SummaryWriter
 from validation import validation
 
-os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"   # see issue #152
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+
+
 class EarlyStopper:
     def __init__(self, patience=1, min_delta=0):
         self.patience = patience
@@ -74,6 +73,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
     n_images = len(images)
 
     null_init = init_mesh is None
+
     writer = SummaryWriter(config['experiment_path']+"/tensorboard")
     writer.add_hparams({ "lr": config["training"]["lr"], "T":config["sampling"]["T"],
                         "ico_sphere_level": config["sampling"]["ico_sphere_level"] },{"value":0},
@@ -82,8 +82,6 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
     early_stopper = EarlyStopper(patience=config['validation']['early_stopping_patience'], min_delta=0.0)
 
     def closure():
-        #################################
-        ## sample mesh from neural nets
         is_render_checkpoint = N_IT % config['training']['render_interval'] == 0 or N_IT == n_iterations - 1
         nonlocal init_mesh
 
@@ -106,14 +104,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
         faces = init_mesh.faces_packed()
 
         mesh = Meshes(verts=[vertices], faces=[faces], vert_textures=[theta_x])
-        # verts, faces = load_ply("data/mesh.ply")
-        # viewpoints = np.load('data/cameras1.npz')
 
-        # verts_rgb = torch.ones_like(verts)[None]  # color the mesh white
-        # mesh = Meshes(verts=[verts.to(device)], faces=[faces.to(device)], vert_textures=verts_rgb.to(device))
-        #################################
-        ## render images with mesh
-        ## and compute losses
         batch_idx = torch.randperm(n_images)[:config['training']['n_image_per_batch']]
         loss_image, loss_silhouette, loss_velocity = 0, 0, 0
 
@@ -283,23 +274,20 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
         writer.add_scalar('Loss/train', losses[0], N_IT)
         optimizer.step()
         pbar.set_description('|'.join(f'{l:.2e}' for l in losses).replace('e', '').replace('|', ' || ', 1))
+
         if call_back is not None:
             call_back(mesh, losses[0])
 
         if(N_IT % config['validation']['interval'] == 0 or N_IT == n_iterations-1):
-        #     # loaded_data = load_models(f'{config["experiment_path"]}/{checkpoint_name}_{N_IT}')
-        #     # loaded_shape_net_state_dict = loaded_data['shape_net']
-        #     # shape_net.load_state_dict(loaded_shape_net_state_dict)
-        
-            print("Validation starts...")
+            print("Starting validation...")
             
             shape_net.eval()
             brdf_net.eval()
             with torch.no_grad():
                 mesh = sample_mesh(config, shape_net, brdf_net)#init_mesh=init_mesh, **params)
 
-                
                 angle = config['validation']['angle']
+
                 if angle == 'behind':
                     loss_val, gt, prd =validation(config, N_IT, mesh, shape_net,angle = 'behind')
                     writer.add_scalar('Loss/val_behind', float(loss_val), N_IT)
@@ -316,20 +304,27 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
                     loss_val1 , gt, prd= validation(config, N_IT, mesh, shape_net,angle = 'behind')
                     writer.add_scalar('Loss/val_behind', float(loss_val1), N_IT)
                     writer.add_image('Image/Pred_behind', (prd/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+
                     loss_val2 , gt, prd= validation(config, N_IT, mesh, shape_net,angle = 'above')
                     writer.add_scalar('Loss/val_above', float(loss_val2), N_IT)
                     writer.add_image('Image/Pred_above', (prd/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+
                     loss_val3 , gt, prd= validation(config, N_IT, mesh, shape_net,angle = 'below')
                     writer.add_scalar('Loss/val_below', float(loss_val3), N_IT)
                     writer.add_image('Image/Pred_below', (prd/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+
                     loss_val = float(loss_val1)+float(loss_val2)+float(loss_val3)
+                    loss_val = float(loss_val1)+float(loss_val2)+float(loss_val3)
+                
+                    loss_val = float(loss_val1)+float(loss_val2)+float(loss_val3)    
                 
 
                 if config['validation']['early_stopping'] == True and early_stopper.early_stop(loss_val):
                     print("Early stopping at iter:", N_IT)
                     break
-
             
+            print("Validation completed!")
+
             shape_net.train()
             brdf_net.train()
 
@@ -409,8 +404,6 @@ if __name__ == '__main__':
         
         images = images.cpu()
 
-        # r, t = P_matrix_to_rot_trans_vectors(P)
-
         pos_encode_weight = torch.cat(tuple(torch.eye(3) * (1.5**i) for i in range(0,14,1)), dim=0) #######
         pos_encode_out_weight = torch.cat(tuple( torch.tensor([1.0/(1.3**i)]*3) for i in range(0,14,1)), dim=0) #######
         
@@ -445,7 +438,6 @@ if __name__ == '__main__':
         print("Training completed!")
         
         # Load the checkpoint model
-        #N_IT =  config['training']['n_iterations']-1
         load_models(f'{config["experiment_path"]}/{checkpoint_name}_{N_IT}', brdf_net=brdf_net, shape_net=shape_net, optimizer=optimizer)
         
         mesh = sample_mesh(config, shape_net, brdf_net)#init_mesh=init_mesh, **params)
