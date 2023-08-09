@@ -34,7 +34,7 @@ def validation(config, N_IT, mesh, shape_net, angle, is_render = False):
     #mesh = Meshes(verts=[verts.to(device)], faces=[faces.to(device)], vert_textures=verts_rgb.to(device))
 
     #### Set viewpoints_name in load_val_dataset ####
-    images, silhouettes, rotations, translations, K, transf = load_val_dataset(path_str ='data',device=device, n_images=config['training']['n_image_per_batch'], viewpoints_name = angle)
+    images, silhouettes, cubes, rotations, translations, K, transf = load_val_dataset(path_str ='data',device=device, n_images=config['training']['n_image_per_batch'], viewpoints_name = angle)
     #images, silhouettes, rotations, translations, K, transf = load_dataset(path_str ='data',device=device, n_images=config['training']['n_image_per_batch'])
     
     camera_settings = pytorch_camera(config['rendering']['rgb']['image_size'], K)
@@ -97,6 +97,10 @@ def validation(config, N_IT, mesh, shape_net, angle, is_render = False):
 
     for i in batch_idx:
         gt_image, gt_silhouette = images[i:i+1], silhouettes[i:i+1]
+        gt_cubes = cubes[i:i+1]
+
+        # NeRF_bgc is the image of cubes
+        NeRF_bgc = gt_cubes
         
         light_pose = None
         if light_dirs is not None:
@@ -112,7 +116,7 @@ def validation(config, N_IT, mesh, shape_net, angle, is_render = False):
                 image_size=image_size, 
                 blur_radius=config['rendering']['rgb']['blur_radius'], 
                 faces_per_pixel=config['rendering']['rgb']['faces_per_pixel'], 
-                device=device, background_colors=None, light_poses=light_pose, materials=None, camera_settings=camera_settings,
+                device=device, background_colors=None, NeRF_bgc=NeRF_bgc, light_poses=light_pose, materials=None, camera_settings=camera_settings,
                 sigma=config['rendering']['rgb']['sigma'], gamma=config['rendering']['rgb']['gamma'])[...,:3]
 
         
