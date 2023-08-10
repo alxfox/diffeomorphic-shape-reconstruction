@@ -13,7 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 def validation(config, N_IT, mesh, shape_net, angle, is_render = False): 
     device = torch.device("cuda:0")
-    images, silhouettes, cubes, rotations, translations, K, transf = load_val_dataset(path_str ='data',device=device, n_images=config['training']['n_image_per_batch'], viewpoints_name = angle, dataset_name=config['dataset'], use_cubes=config['use_cubes'], )
+    images, silhouettes, cubes, rotations, translations, K, transf = load_val_dataset(path_str ='data',device=device, n_images=config['training']['n_image_per_batch'], viewpoints_name = angle, dataset_name=config['dataset'], use_background=config['use_background'], )
     
     camera_settings = pytorch_camera(config['rendering']['rgb']['image_size'], K)
     images = images.cpu()

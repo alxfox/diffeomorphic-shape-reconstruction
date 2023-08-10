@@ -387,7 +387,7 @@ if __name__ == '__main__':
             print(error)
 
         if(config['rendering']['rgb']['L0']=='None'):
-            f = open('store.pckl', 'rb')
+            f = open(f'data/dataset/{config["dataset"]}/store.pckl', 'rb')
             config['rendering']['rgb']['L0'] = pickle.load(f).item()
             f.close()
 
@@ -400,16 +400,16 @@ if __name__ == '__main__':
         checkpoint_name = 'checkpoint' #######  'diligent_reading'
         
         from dataloader import load_dataset
-        images, silhouettes, cubes, R, T, K, transf = load_dataset('data', n_images=config['training']['n_image_per_batch'], dataset_name=config['dataset'], use_cubes=config['use_cubes'], device=device)
+        images, silhouettes, cubes, R, T, K, transf = load_dataset('data', n_images=config['training']['n_image_per_batch'], dataset_name=config['dataset'], use_background=config['use_background'], device=device)
         
         images = images.cpu()
 
         pos_encode_weight = torch.cat(tuple(torch.eye(3) * (1.5**i) for i in range(0,14,1)), dim=0) #######
         pos_encode_out_weight = torch.cat(tuple( torch.tensor([1.0/(1.3**i)]*3) for i in range(0,14,1)), dim=0) #######
-        
+
         shape_net = ShapeNet(velocity_mlp= Sequential(
                             PositionEncoding(pos_encode_weight, pos_encode_out_weight),
-                            MLP(pos_encode_weight.shape[0]*2, [256,256,256,3], ['lrelu','lrelu','lrelu','tanh']),  
+                            MLP(pos_encode_weight.shape[0]*2, config['shape_net_shape'], ['lrelu','lrelu','lrelu','tanh']),  
                             ), T=config['sampling']['T']).to(device)
 
         brdf_net = BRDFNet(Sequential(

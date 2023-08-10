@@ -8,9 +8,10 @@ from pytorch3d.structures import join_meshes_as_scene
 from pytorch3d.io import load_ply
 from Render import render_mesh
 from utils import dotty, pytorch_camera, Meshes
-
+from tqdm import tqdm
 
 def create(viewpoints, dataset_name, view_name, validation = False, cubes_color=[1,1,1]):
+    print("creating dataset:", dataset_name, "|", "view:", view_name)
     device = torch.device("cuda:0")
     viewpoints = np.load(join('data', viewpoints))
     if(dataset_name=="rotation"):
@@ -74,7 +75,7 @@ def create(viewpoints, dataset_name, view_name, validation = False, cubes_color=
         params['rendering.rgb.L0'] = pickle.load(f).item()
         f.close()
 
-    for i in range(n_images):
+    for i in tqdm(range(n_images)):
         prd_image = render_mesh(mesh, 
                                 modes='image_ct', #######
                                 rotations=R[i:i+1], 
@@ -112,7 +113,6 @@ def create(viewpoints, dataset_name, view_name, validation = False, cubes_color=
         pickle.dump(params['rendering.rgb.L0'], f)
         f.close()
 
-    print(view_name)
     for i in range(n_images):
     # images are saved to out as a png    
         img = (images[i]/max_val*((256**2)-1)).cpu().numpy().astype(np.uint16)[0]
@@ -127,7 +127,7 @@ def create(viewpoints, dataset_name, view_name, validation = False, cubes_color=
     # render only the cubes:
     images = []
     silhouettes = []
-    for i in range(n_images):
+    for i in tqdm(range(n_images)):
         prd_image = render_mesh(cube, 
                                 modes='image_ct', #######
                                 rotations=R[i:i+1], 
@@ -170,7 +170,7 @@ def create(viewpoints, dataset_name, view_name, validation = False, cubes_color=
     # render only the bunny:
     images = []
     silhouettes = []
-    for i in range(n_images):
+    for i in tqdm(range(n_images)):
         prd_image = render_mesh(bunny, 
                                 modes='image_ct', #######
                                 rotations=R[i:i+1], 
@@ -212,6 +212,7 @@ def create(viewpoints, dataset_name, view_name, validation = False, cubes_color=
     
     
 if __name__ == '__main__':
+    print("starting dataset creation...")
     # cubes_color = [1,1,1] # white
     cubes_color = [0,1,0] # green
     create(viewpoints = 'cameras1.npz', dataset_name="normal", validation = False, view_name = 'front', cubes_color=cubes_color)
