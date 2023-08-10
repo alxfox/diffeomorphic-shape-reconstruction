@@ -30,9 +30,16 @@ def load_mesh(path_str, name_str):
 
     return (verts - shift) / scale, faces, transf
 
-def load_dataset(path_str, device, n_images=30, max_faces_no=None):
-    cameras = np.load(f'{path_str}/cameras1.npz')
-
+def load_dataset(path_str, device, n_images=30, dataset_name="normal", use_cubes=False, max_faces_no=None):
+    
+    if(dataset_name=="normal"):
+        viewpoints_name = "front"
+        cameras = np.load(f'{path_str}/cameras1.npz')
+    elif(dataset_name=="rotation"):
+        viewpoints_name = "behind"
+        cameras = np.load(f'{path_str}/cameras_behind.npz')
+    else:
+        return # dataset doesn't exist
     R = torch.zeros((n_images, 3, 3), device=device)
     T = torch.zeros((n_images, 3), device=device)
 
@@ -47,20 +54,23 @@ def load_dataset(path_str, device, n_images=30, max_faces_no=None):
     K = torch.from_numpy(cameras["K"]).float().to(device)
 
     images = torch.from_numpy(np.stack([\
-                    cv2.imread(f'{path_str}/dataset/cubesmesh_render_{j:02}.png', -1)[...,::-1].astype(np.float32) \
+                    cv2.imread(f'{path_str}/dataset/{dataset_name}/{"full" if use_cubes else "bunny"}/render_{viewpoints_name}_{j:02}.png', -1)[...,::-1].astype(np.float32) \
                     for j in range(n_images)], axis=0)).to(device)[...,:3]/(256**2-1)
 
-    masks = torch.from_numpy(np.stack([\
-                            (cv2.imread(f'{path_str}/dataset/cubesmesh_mask_{j:02}.png', -1)).astype(np.float32)\
-                            for j in range(n_images)], axis=0)).to(device)/(256**2-1)
-
-    cubes = torch.from_numpy(np.stack([\
-                    cv2.imread(f'{path_str}/dataset/cubes_render_{j:02}.png', -1)[...,::-1].astype(np.float32) \
+    masks = torch.zeros_like(images)
+    # masks = torch.from_numpy(np.stack([\
+    #                         (cv2.imread(f'{path_str}/dataset/cubesmesh_mask_{j:02}.png', -1)).astype(np.float32)\
+    #                         for j in range(n_images)], axis=0)).to(device)/(256**2-1)
+    if(use_cubes):
+        cubes = torch.from_numpy(np.stack([\
+                    cv2.imread(f'{path_str}/dataset/{dataset_name}/cubes/render_{viewpoints_name}_{j:02}.png', -1)[...,::-1].astype(np.float32) \
                     for j in range(n_images)], axis=0)).to(device)[...,:3]/(256**2-1)
+    else:
+        cubes = torch.zeros_like(images) # black background
 
     return images, masks, cubes, R, T, K, None
 
-def load_val_dataset(path_str, device, n_images=30, viewpoints_name =None, max_faces_no=None):
+def load_val_dataset(path_str, device, n_images=30, dataset_name="normal", viewpoints_name=None, use_cubes=False, max_faces_no=None):
     
     cameras = np.load(f'{path_str}/cameras_{viewpoints_name}.npz')
 
@@ -78,17 +88,19 @@ def load_val_dataset(path_str, device, n_images=30, viewpoints_name =None, max_f
     K = torch.from_numpy(cameras["K"]).float().to(device)
 
     images = torch.from_numpy(np.stack([\
-                     cv2.imread(f'{path_str}/dataset/cubesmesh_render_{viewpoints_name}{j:02}.png', -1)[...,::-1].astype(np.float32) \
+                     cv2.imread(f'{path_str}/dataset/{dataset_name}/cubes/render_{viewpoints_name}_{j:02}.png', -1)[...,::-1].astype(np.float32) \
                 for j in range(n_images)], axis=0)).to(device)[...,:3]/(256**2-1)
    
-    masks = torch.from_numpy(np.stack([\
-                     cv2.imread(f'{path_str}/dataset/cubesmesh_mask_{j:02}.png', -1).astype(np.float32)\
-                for j in range(n_images)], axis=0)).to(device)/(256**2-1)
-    
-    cubes = torch.from_numpy(np.stack([\
-                    cv2.imread(f'{path_str}/dataset/cubes_render_{viewpoints_name}{j:02}.png', -1)[...,::-1].astype(np.float32) \
+    masks = torch.zeros_like(images)
+    #       torch.from_numpy(np.stack([\
+    #                  cv2.imread(f'{path_str}/dataset/cubes/mask_{j:02}.png', -1).astype(np.float32)\
+    #             for j in range(n_images)], axis=0)).to(device)/(256**2-1)
+    if(use_cubes):
+        cubes = torch.from_numpy(np.stack([\
+                    cv2.imread(f'{path_str}/dataset/{dataset_name}/cubes/render_{viewpoints_name}_{j:02}.png', -1)[...,::-1].astype(np.float32) \
                 for j in range(n_images)], axis=0)).to(device)[...,:3]/(256**2-1)
-
+    else:
+        cubes = torch.zeros_like(images) # black background
 
     return images, masks, cubes, R, T, K, None
     

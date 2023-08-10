@@ -291,27 +291,27 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
                 if angle == 'behind':
                     loss_val, gt, prd =validation(config, N_IT, mesh, shape_net,angle = 'behind')
                     writer.add_scalar('Loss/val_behind', float(loss_val), N_IT)
-                    writer.add_image('Image/Pred_behind', (prd/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+                    writer.add_image('Image/Pred_behind', (prd/256).clip(0,255).astype(np.uint8), dataformats="HWC", global_step=N_IT)
                 elif angle == 'above':
                     loss_val , gt, prd=validation(config, N_IT, mesh, shape_net,angle = 'above')
                     writer.add_scalar('Loss/val_above', float(loss_val), N_IT)
-                    writer.add_image('Image/Pred_above', (prd/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+                    writer.add_image('Image/Pred_above', (prd/256).clip(0,255).astype(np.uint8), dataformats="HWC", global_step=N_IT)
                 elif angle == 'below':
                     loss_val , gt, prd= validation(config, N_IT, mesh, shape_net,angle = 'below')
                     writer.add_scalar('Loss/val_below', float(loss_val), N_IT)
-                    writer.add_image('Image/Pred_below', (prd/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+                    writer.add_image('Image/Pred_below', (prd/256).clip(0,255).astype(np.uint8), dataformats="HWC", global_step=N_IT)
                 else :
                     loss_val1 , gt, prd= validation(config, N_IT, mesh, shape_net,angle = 'behind')
                     writer.add_scalar('Loss/val_behind', float(loss_val1), N_IT)
-                    writer.add_image('Image/Pred_behind', (prd/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+                    writer.add_image('Image/Pred_behind', (prd/256).clip(0,255).astype(np.uint8), dataformats="HWC", global_step=N_IT)
 
                     loss_val2 , gt, prd= validation(config, N_IT, mesh, shape_net,angle = 'above')
                     writer.add_scalar('Loss/val_above', float(loss_val2), N_IT)
-                    writer.add_image('Image/Pred_above', (prd/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+                    writer.add_image('Image/Pred_above', (prd/256).clip(0,255).astype(np.uint8), dataformats="HWC", global_step=N_IT)
 
                     loss_val3 , gt, prd= validation(config, N_IT, mesh, shape_net,angle = 'below')
                     writer.add_scalar('Loss/val_below', float(loss_val3), N_IT)
-                    writer.add_image('Image/Pred_below', (prd/256).astype(np.uint8), dataformats="HWC", global_step=N_IT)
+                    writer.add_image('Image/Pred_below', (prd/256).clip(0,255).astype(np.uint8), dataformats="HWC", global_step=N_IT)
 
                     loss_val = float(loss_val1)+float(loss_val2)+float(loss_val3)
                     loss_val = float(loss_val1)+float(loss_val2)+float(loss_val3)
@@ -400,7 +400,7 @@ if __name__ == '__main__':
         checkpoint_name = 'checkpoint' #######  'diligent_reading'
         
         from dataloader import load_dataset
-        images, silhouettes, cubes, R, T, K, transf = load_dataset('data', n_images=config['training']['n_image_per_batch'], device=device)
+        images, silhouettes, cubes, R, T, K, transf = load_dataset('data', n_images=config['training']['n_image_per_batch'], dataset_name=config['dataset'], use_cubes=config['use_cubes'], device=device)
         
         images = images.cpu()
 

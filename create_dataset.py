@@ -10,12 +10,14 @@ from Render import render_mesh
 from utils import dotty, pytorch_camera, Meshes
 
 
-def create(viewpoints, validation = False, name = None):
+def create(viewpoints, dataset_name, view_name, validation = False, cubes_color=[1,1,1]):
     device = torch.device("cuda:0")
-    viewpoints = np.load(join('data',viewpoints))
-    
-    verts, faces = load_ply("data/cubes.ply")
-    verts_rgb = (torch.ones_like(verts)*torch.tensor([0,1,0]))[None]  # color the cubes green
+    viewpoints = np.load(join('data', viewpoints))
+    if(dataset_name=="rotation"):
+        verts, faces = load_ply("data/rotation_cubes.ply")
+    elif(dataset_name=="normal"):
+        verts, faces = load_ply("data/cubes.ply")
+    verts_rgb = (torch.ones_like(verts) * torch.tensor(cubes_color))[None]  # color the cubes
     cube = Meshes(verts=[verts.to(device)], faces=[faces.to(device)], vert_textures=verts_rgb.to(device))
 
     verts, faces = load_ply("data/mesh.ply")
@@ -61,7 +63,8 @@ def create(viewpoints, validation = False, name = None):
         T[i] = torch.from_numpy(viewpoints["T_"+str(i)]).float().to(device)
     
     camera_settings = pytorch_camera(params['rendering.rgb.image_size'], torch.from_numpy(viewpoints["K"]).float().to(device))
-
+    
+    # render the cubes with the bunny:
     images = []
     silhouettes =[]
     max_val = 0
@@ -100,30 +103,123 @@ def create(viewpoints, validation = False, name = None):
         
         silhouettes.append(sh_image)
 
+    path = './data/dataset/' + dataset_name
+    if os.path.exists(path + "/full")== False:
+        os.makedirs(path + "/full")
     if(not validation):
-        new_L0 = params['rendering.rgb.L0']/max_val
-        f = open('store.pckl', 'wb')
-        pickle.dump(new_L0, f)
+        params['rendering.rgb.L0'] = params['rendering.rgb.L0']/max_val
+        f = open(path+'/store.pckl', 'wb')
+        pickle.dump(params['rendering.rgb.L0'], f)
         f.close()
 
-    path = './data/dataset'
-    if os.path.exists(path)== False:
-        os.mkdir(path)
-    
+    print(view_name)
     for i in range(n_images):
     # images are saved to out as a png    
         img = (images[i]/max_val*((256**2)-1)).cpu().numpy().astype(np.uint16)[0]
         imgsh = (silhouettes[i]*((256**2)-1)).cpu().numpy().astype(np.uint16)
         #writer.append_data(img)
         if (validation):
-            cv2.imwrite(f"./data/dataset/cubesmesh_render_{name}{i:02}.png", img)
+            cv2.imwrite(f"{path}/full/render_{view_name}{i:02}.png", img)
         else:
-            cv2.imwrite(f"./data/dataset/cubesmesh_render_{i:02}.png", img)
-            cv2.imwrite(f"./data/dataset/cubesmesh_mask_{i:02}.png", imgsh)
+            cv2.imwrite(f"{path}/full/render_{view_name if view_name!=None else ''}_{i:02}.png", img)
+            cv2.imwrite(f"{path}/full/mask_{view_name if view_name!=None else ''}_{i:02}.png", imgsh)
+    
+    # render only the cubes:
+    images = []
+    silhouettes = []
+    for i in range(n_images):
+        prd_image = render_mesh(cube, 
+                                modes='image_ct', #######
+                                rotations=R[i:i+1], 
+                                translations=T[i:i+1], 
+                                image_size=params['rendering.rgb.image_size'], 
+                                blur_radius=params['rendering.rgb.blur_radius'], 
+                                faces_per_pixel=params['rendering.rgb.faces_per_pixel'], 
+                                L0=params['rendering.rgb.L0'],
+                                device=device, background_colors=None, light_poses=None, materials=None, camera_settings=camera_settings,
+                                sigma=params['rendering.rgb.sigma'], gamma=params['rendering.rgb.gamma'], name='dataset')
+        
+        prd_image = prd_image[...,:3]
+        images.append(prd_image)
+        max_val = max(max_val,prd_image.max())
 
+        sh_image = render_mesh(cube, 
+                        modes='silhouette', #######
+                        rotations=R[i:i+1], 
+                        translations=T[i:i+1], 
+                        image_size=params['rendering.silhouette.image_size'], 
+                        blur_radius=params['rendering.silhouette.blur_radius'], 
+                        faces_per_pixel=params['rendering.silhouette.faces_per_pixel'], 
+                        L0=params['rendering.silhouette.L0'],
+                        device=device, background_colors=None, light_poses=None, materials=None, camera_settings=camera_settings,
+                        sigma=params['rendering.silhouette.sigma'], gamma=params['rendering.silhouette.gamma'])
+        
+        silhouettes.append(sh_image)
+    if os.path.exists(path + "/cubes")== False:
+        os.makedirs(path + "/cubes")
+    for i in range(n_images):
+    # images are saved to out as a png    
+        img = (images[i]*((256**2)-1)).cpu().numpy().astype(np.uint16)[0]
+        imgsh = (silhouettes[i]*((256**2)-1)).cpu().numpy().astype(np.uint16)
+        if (validation):
+            cv2.imwrite(f"{path}/cubes/render_{view_name}_{i:02}.png", img)
+        else:
+            cv2.imwrite(f"{path}/cubes/render_{view_name}_{i:02}.png", img)
+            cv2.imwrite(f"{path}/cubes/mask_{view_name}_{i:02}.png", imgsh)
+
+    # render only the bunny:
+    images = []
+    silhouettes = []
+    for i in range(n_images):
+        prd_image = render_mesh(bunny, 
+                                modes='image_ct', #######
+                                rotations=R[i:i+1], 
+                                translations=T[i:i+1], 
+                                image_size=params['rendering.rgb.image_size'], 
+                                blur_radius=params['rendering.rgb.blur_radius'], 
+                                faces_per_pixel=params['rendering.rgb.faces_per_pixel'], 
+                                L0=params['rendering.rgb.L0'],
+                                device=device, background_colors=None, light_poses=None, materials=None, camera_settings=camera_settings,
+                                sigma=params['rendering.rgb.sigma'], gamma=params['rendering.rgb.gamma'], name='dataset')
+        
+        prd_image = prd_image[...,:3]
+        images.append(prd_image)
+        max_val = max(max_val,prd_image.max())
+
+        sh_image = render_mesh(bunny, 
+                        modes='silhouette', #######
+                        rotations=R[i:i+1], 
+                        translations=T[i:i+1], 
+                        image_size=params['rendering.silhouette.image_size'], 
+                        blur_radius=params['rendering.silhouette.blur_radius'], 
+                        faces_per_pixel=params['rendering.silhouette.faces_per_pixel'], 
+                        L0=params['rendering.silhouette.L0'],
+                        device=device, background_colors=None, light_poses=None, materials=None, camera_settings=camera_settings,
+                        sigma=params['rendering.silhouette.sigma'], gamma=params['rendering.silhouette.gamma'])
+        
+        silhouettes.append(sh_image)
+    if os.path.exists(path + "/bunny")== False:
+        os.makedirs(path + "/bunny")
+    for i in range(n_images):
+    # images are saved to out as a png    
+        img = (images[i]*((256**2)-1)).cpu().numpy().astype(np.uint16)[0]
+        imgsh = (silhouettes[i]*((256**2)-1)).cpu().numpy().astype(np.uint16)
+        if (validation):
+            cv2.imwrite(f"{path}/bunny/render_{view_name}_{i:02}.png", img)
+        else:
+            cv2.imwrite(f"{path}/bunny/render_{view_name}_{i:02}.png", img)
+            cv2.imwrite(f"{path}/bunny/mask_{view_name}_{i:02}.png", imgsh)
+    
     
 if __name__ == '__main__':
-    create(viewpoints = 'cameras1.npz')
-    create(viewpoints = 'cameras_behind.npz', validation = True , name = 'behind')
-    create(viewpoints = 'cameras_above.npz', validation = True , name = 'above')
-    create(viewpoints = 'cameras_below.npz', validation = True , name = 'below')
+    # cubes_color = [1,1,1] # white
+    cubes_color = [0,1,0] # green
+    create(viewpoints = 'cameras1.npz', dataset_name="normal", validation = False, view_name = 'front', cubes_color=cubes_color)
+    create(viewpoints = 'cameras_behind.npz', dataset_name="normal", validation = True, view_name = 'behind', cubes_color=cubes_color)
+    create(viewpoints = 'cameras_above.npz', dataset_name="normal", validation = True, view_name = 'above', cubes_color=cubes_color)
+    create(viewpoints = 'cameras_below.npz', dataset_name="normal", validation = True, view_name = 'below', cubes_color=cubes_color)
+
+    create(viewpoints = 'cameras_behind.npz', dataset_name="rotation", validation = False, view_name = 'behind', cubes_color=cubes_color)
+    create(viewpoints = 'cameras1.npz', dataset_name="rotation", validation = True, view_name = 'front', cubes_color=cubes_color)
+    create(viewpoints = 'cameras_above.npz', dataset_name="rotation", validation = True, view_name = 'above', cubes_color=cubes_color)
+    create(viewpoints = 'cameras_below.npz', dataset_name="rotation", validation = True, view_name = 'below', cubes_color=cubes_color)

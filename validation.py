@@ -13,7 +13,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 def validation(config, N_IT, mesh, shape_net, angle, is_render = False): 
     device = torch.device("cuda:0")
-    images, silhouettes, cubes, rotations, translations, K, transf = load_val_dataset(path_str ='data',device=device, n_images=config['training']['n_image_per_batch'], viewpoints_name = angle)
+    images, silhouettes, cubes, rotations, translations, K, transf = load_val_dataset(path_str ='data',device=device, n_images=config['training']['n_image_per_batch'], viewpoints_name = angle, dataset_name=config['dataset'], use_cubes=config['use_cubes'], )
     
     camera_settings = pytorch_camera(config['rendering']['rgb']['image_size'], K)
     images = images.cpu()
@@ -81,10 +81,10 @@ def validation(config, N_IT, mesh, shape_net, angle, is_render = False):
         grid_y_start = (i.item() % col_count)* image_size
         grid_y_end = grid_y_start + image_size
 
-        img = (prd_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+        img = (prd_image[0]*(256**2-1)).clip(0,256**2-1).detach().cpu().numpy().astype(np.uint16)
         prd_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
 
-        img = (gt_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+        img = (gt_image[0]*(256**2-1)).clip(0,256**2-1).detach().cpu().numpy().astype(np.uint16)
         gt_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
         
         if config['loss']['lambda_image'] != 0:
@@ -113,10 +113,10 @@ def validation(config, N_IT, mesh, shape_net, angle, is_render = False):
             gt_silhouette = torch.unsqueeze(gt_silhouette,3)
 
             
-            img = (prd_silhouette[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+            img = (prd_silhouette[0]*(256**2-1)).clip(0,256**2-1).detach().cpu().numpy().astype(np.uint16)
             prd_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
 
-            img = (gt_silhouette[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
+            img = (gt_silhouette[0]*(256**2-1)).clip(0,256**2-1).detach().cpu().numpy().astype(np.uint16)
             gt_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
 
             loss_tmp = mse(gt_silhouette.cuda(), prd_silhouette) / config['training']['n_image_per_batch']

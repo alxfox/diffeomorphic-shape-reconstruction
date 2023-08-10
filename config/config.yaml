@@ -1,11 +1,13 @@
-name: train_with_bgc
+name: testcfg
+dataset: normal # one of: [normal, rotation]
+use_cubes: True # whether to use a background
 n_lobes: 5
 training: 
-    render_interval: 20                  # interval at which the current batch should be rendered to a file
+    render_interval: 1                  # interval at which the current batch should be rendered to a file
     render_cols: 10                     # number of columns to be used for the rendered image grid
-    checkpoint_interval: 20            # interval at which a checkpoint of the network should be saved
+    checkpoint_interval: 20             # interval at which a checkpoint of the network should be saved
     n_image_per_batch: 30               # batch size during training
-    lr: 0.0002                           # learning rate
+    lr: 0.0001                           # learning rate
     compute_velocity_seperately: True   
     n_pts_per_split: 2048
     sampling_lvl_for_vel_loss: 5
