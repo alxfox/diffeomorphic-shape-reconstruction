@@ -214,8 +214,9 @@ def create(viewpoints, dataset_name, view_name, validation = False, cubes_color=
     
 if __name__ == '__main__':
     print("starting dataset creation...")
-    # cubes_color = [1,1,1] # white
-    cubes_color = [0,1,0] # green
+    # You may change the color of the generated background cubes here
+    cubes_color = [1,1,1] # white
+    # cubes_color = [0,1,0] # green
     create(viewpoints = 'cameras1.npz', dataset_name="normal", validation = False, view_name = 'front', cubes_color=cubes_color)
     create(viewpoints = 'cameras_behind.npz', dataset_name="normal", validation = True, view_name = 'behind', cubes_color=cubes_color)
     create(viewpoints = 'cameras_above.npz', dataset_name="normal", validation = True, view_name = 'above', cubes_color=cubes_color)
