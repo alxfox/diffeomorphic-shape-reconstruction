@@ -1,3 +1,4 @@
+# Various utility functions from original work
 from pytorch3d.transforms import so3_exponential_map, so3_rotation_angle
 import numpy as np
 import torch

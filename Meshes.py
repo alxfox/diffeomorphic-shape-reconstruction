@@ -5,7 +5,7 @@ import torch
 import pytorch3d
 from pytorch3d.structures import utils as struct_utils
 from pytorch3d.renderer.mesh import TexturesVertex
-
+# Simple Mesh wrapper
 class Meshes(pytorch3d.structures.Meshes):
     def __init__(self, verts=None, faces=None, vert_textures=None, verts_normals=None):
         if vert_textures is not None:

@@ -1,3 +1,4 @@
+# Building blocks of the network
 import torch
 import numpy as np
 from CookTorranceRendering import apply_lighting_cook_torrance

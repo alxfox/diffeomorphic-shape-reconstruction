@@ -1,3 +1,4 @@
+# Used to create Datasets for training purposes by providing a mesh and a number of camera matrices
 import numpy as np
 import torch
 import cv2

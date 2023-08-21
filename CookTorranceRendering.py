@@ -1,3 +1,4 @@
+# Shader used for differentiable rendering
 import torch
 import torch.nn as nn
 import numpy as np

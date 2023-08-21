@@ -1,3 +1,6 @@
+# Main file for performing experiments using our approach
+# based on the paper "Diffeomorphic Neural Surface Parameterization for 3D and Reflectance Acquisition"
+
 import os
 os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
@@ -19,7 +22,6 @@ from Model import MLP, PositionEncoding, Sequential, ShapeNet, BRDFNet
 from itertools import chain
 from utils import dotty, pytorch_camera, random_crop
 import os
-from diligent import diligent_eval_chamfer
 import pickle
 import yaml
 import uuid
@@ -74,7 +76,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
 
     null_init = init_mesh is None
 
-    #Add tensorboard
+    #Add tensorboard logging
     writer = SummaryWriter(config['experiment_path']+"/tensorboard")
     writer.add_hparams({ "lr": config["training"]["lr"], "T":config["sampling"]["T"],
                         "ico_sphere_level": config["sampling"]["ico_sphere_level"] },{"value":0},
@@ -104,7 +106,9 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
         theta_x = brdf_net(s)
 
         faces = init_mesh.faces_packed()
-
+        # The texture produced by the brdf net is ignored during rendering
+        # It is kept in for easier reimplementation and other experiments
+        # As its output is not actually used, no loss is propagated
         mesh = Meshes(verts=[vertices], faces=[faces], vert_textures=[theta_x])
 
         batch_idx = torch.randperm(n_images)[:config['training']['n_image_per_batch']]
@@ -120,7 +124,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
             x = np.random.randint(0, max_val)
             y = np.random.randint(0, max_val)
 
-
+        # save rendered images in a grid for render output in the logs
         col_count = config['training']['render_cols']
         img_grid_width = int(col_count * image_size)
         img_grid_height = int(n_images / col_count * image_size)
@@ -131,7 +135,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
         # gt_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
         prd_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.float32)
         
-        #Start optimization of losses
+        #Calculate losses for the batch (of 30 images)
         for i in batch_idx:
             gt_image, gt_silhouette = images[i:i+1], silhouettes[i:i+1]
             gt_cubes = cubes[i:i+1]
@@ -176,7 +180,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
                 gt_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
 
 
-            
+            # Image loss
             if config['loss']['lambda_image'] != 0:
                 if crop: 
                     loss_tmp = clipped_mae(cropped_gt_image.cuda(), cropped_prd_image) / config['training']['n_image_per_batch']
@@ -186,7 +190,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
                     loss_tmp = clipped_mae(gt_image.cuda(), prd_image) / config['training']['n_image_per_batch']
                     (loss_tmp * config['loss']['lambda_image']).backward(retain_graph=True)
                     loss_image += loss_tmp.detach()
-
+            # Silhouette Loss (unused)
             if config['loss']['lambda_silhouette'] != 0:
                 prd_silhouette = render_mesh(mesh, 
                         modes='silhouette', 
@@ -208,7 +212,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
                 loss_tmp = mse(gt_silhouette.cuda(), prd_silhouette) / config['training']['n_image_per_batch']
                 (loss_tmp * config['loss']['lambda_silhouette']).backward(retain_graph=True)
                 loss_silhouette += loss_tmp.detach()
-        
+        # Velocity loss
         if config['loss']['lambda_velocity'] == 0:
             pass
         elif (config['loss']['alpha'] == 0) or (not config['training']['compute_velocity_seperately']):
@@ -230,7 +234,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
                 loss_tmp = velocity_loss(_v_arr, _d2v_d2s_arr, config['loss']['alpha']) * n_pts / n_pts_total
                 (loss_tmp * config['loss']['lambda_velocity']).backward(retain_graph=False)
                 loss_velocity += loss_tmp.detach()
-
+        # Other losses (not used anymore)
         if config['loss']['lambda_edge'] != 0:
             loss_edge = pytorch3d.loss.mesh_edge_loss(mesh)
             (loss_edge * config['loss']['lambda_edge']).backward(retain_graph=True)
@@ -259,7 +263,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
         return mesh.detach(), (float(loss), float(loss_image), float(loss_silhouette), float(loss_velocity), float(loss_edge), float(loss_normal_consistency), float(loss_laplacian_smoothing)), (prd_grid, ), (gt_grid, )
     
     pbar = tqdm(range(n_iterations))
-
+    #Training iterations
     for N_IT in pbar:
         optimizer.zero_grad()
         mesh, losses, rendered_images, gt_images = closure()
@@ -288,12 +292,12 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
             shape_net.eval()
             brdf_net.eval()
             with torch.no_grad():
-                mesh = sample_mesh(config, shape_net, brdf_net)#init_mesh=init_mesh, **params)
-                #take account a specific angle looking at the object for validation, otherwise use all the validation viewpoints
+                mesh = sample_mesh(config, shape_net, brdf_net)
+                #Perform validation only for a specific angle, otherwise use all the validation viewpoints
                 angle = config['validation']['angle']
 
                 if angle == 'behind':
-                    loss_val, gt, prd =validation(config, N_IT, mesh, shape_net,angle = 'behind')
+                    loss_val, gt, prd=validation(config, N_IT, mesh, shape_net,angle = 'behind')
                     writer.add_scalar('Loss/val_behind', float(loss_val), N_IT)
                     writer.add_image('Image/Pred_behind', (prd/256).clip(0,255).astype(np.uint8), dataformats="HWC", global_step=N_IT)
                 elif angle == 'above':
@@ -332,8 +336,6 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
             shape_net.train()
             brdf_net.train()
 
-    #call_back(end=True)
-
     return losses, N_IT
 
 def call_back(mesh=None, loss=None, end=False):
@@ -348,35 +350,11 @@ def call_back(mesh=None, loss=None, end=False):
         call_back.history = []
     call_back.history.append(float(loss))
 
-    # if min(call_back.history) == loss:
-    #     save_models(f'./out/{checkpoint_name}', brdf_net=brdf_net, shape_net=shape_net, 
-    #                 optimizer=optimizer, meta=dict(loss=loss, params=dict(params)))
-    
-    # with torch.no_grad():
-    #     frame = render_mesh(mesh, 
-    #                         modes='image_ct', #######
-    #                         rotations=R[0:1], 
-    #                         translations=T[0:1], 
-    #                         L0=params['rendering']['rgb']['L0'],
-    #                         image_size=params['rendering']['rgb']['image_size'], 
-    #                         blur_radius=params['rendering']['rgb']['blur_radius'], 
-    #                         faces_per_pixel=params['rendering']['rgb']['faces_per_pixel'], 
-    #                         device=device, background_colors=None, light_poses=None, materials=None, camera_settings=camera_settings)[...,:3]
-        
-    #     frame = torch.cat(list(f for f in frame), dim=1)
-    #     frame = np.clip((frame * 255 / params['rendering']['rgb']['max_intensity']).cpu().numpy(), 0, 255).astype(np.uint8) #######
-    # if not hasattr(call_back, 'video_writer') or call_back.video_writer is None:
-    #     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    #     call_back.video_writer = cv2.VideoWriter(f'./out/{checkpoint_name}.mp4', fourcc, 30, (frame.shape[1], frame.shape[0]))
-    # img = (frame*(256**2-1)).astype(np.uint16)
-    # cv2.imwrite(f"./out/render.png", img)
-    # call_back.video_writer.write(frame)
-
 if __name__ == '__main__':
     config_list = [join('./config',f) for f in listdir('./config') if isfile(join('./config', f))]
 
     print("Configs to run: ", config_list)
-    #Set up experiment for each config file
+    # Perform experiment for each config file
     for conf in config_list:
         config = yaml.safe_load(open(conf))
         if(not config.get('experiment_path')):
@@ -389,7 +367,8 @@ if __name__ == '__main__':
             os.makedirs(config['experiment_path'])
         except OSError as error:
             print(error)
-        #Use of the new L0 value generated from rendering process
+
+        # Use of the new L0 value generated during dataset creation
         if(config['rendering']['rgb']['L0']=='None'):
             f = open(f'data/dataset/{config["dataset"]}/store.pckl', 'rb')
             config['rendering']['rgb']['L0'] = pickle.load(f).item()
@@ -401,13 +380,13 @@ if __name__ == '__main__':
 
         device = torch.device('cuda:0')
         manual_seed(config['training']['rand_seed'])
-        checkpoint_name = 'checkpoint' #######  'diligent_reading'
-        #Load datasets and camera settings
+        checkpoint_name = 'checkpoint'
+        # Load datasets and camera settings
         from dataloader import load_dataset
         images, silhouettes, cubes, R, T, K, transf = load_dataset('data', n_images=config['training']['n_image_per_batch'], dataset_name=config['dataset'], use_background=config['use_background'], provide_background=config['provide_background'], device=device)
         
         images = images.cpu()
-        #Initialization of MLP networks
+        # Initialization of MLP networks
         pos_encode_weight = torch.cat(tuple(torch.eye(3) * (1.5**i) for i in range(0,14,1)), dim=0) #######
         pos_encode_out_weight = torch.cat(tuple( torch.tensor([1.0/(1.3**i)]*3) for i in range(0,14,1)), dim=0) #######
 
@@ -415,19 +394,17 @@ if __name__ == '__main__':
                             PositionEncoding(pos_encode_weight, pos_encode_out_weight),
                             MLP(pos_encode_weight.shape[0]*2, config['shape_net_shape'], ['lrelu','lrelu','lrelu','tanh']),  
                             ), T=config['sampling']['T']).to(device)
-
+        # The brdf net remains for easier reimplementation in the future
+        # Its values are ignored and no loss is propagated
         brdf_net = BRDFNet(Sequential(
                             PositionEncoding(pos_encode_weight, pos_encode_out_weight),  
                             MLP(pos_encode_weight.shape[0]*2, [256]*5+[config['n_lobes']*3+3], ['lrelu']*5+['none']),    
                             ), constant_fresnel=True).to(device)
 
         optimizer = torch.optim.Adam(list(shape_net.parameters())+list(brdf_net.parameters()), lr=config['training']['lr'])
-        #Camera settings
+        # Camera settings
         camera_settings_silhouette = pytorch_camera(config['rendering']['silhouette']['image_size'], K)
         camera_settings = pytorch_camera(config['rendering']['rgb']['image_size'], K)
-
-        verts, faces = load_ply("data/mesh.ply")
-        init_mesh = Meshes(verts=[verts], faces=[faces]).to(device)
 
         print("Starting training...")
 
@@ -443,8 +420,8 @@ if __name__ == '__main__':
         
         # Load the checkpoint model
         load_models(f'{config["experiment_path"]}/{checkpoint_name}_{N_IT}', brdf_net=brdf_net, shape_net=shape_net, optimizer=optimizer)
-        
-        mesh = sample_mesh(config, shape_net, brdf_net)#init_mesh=init_mesh, **params)
+        # Save final mesh
+        mesh = sample_mesh(config, shape_net, brdf_net)
         trimesh.Trimesh((mesh.verts_packed().detach()).cpu().numpy(), 
                         mesh.faces_packed().cpu().numpy()).export(f'{config["experiment_path"]}/{checkpoint_name}.obj')
 

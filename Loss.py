@@ -1,3 +1,4 @@
+# Various Losses used for training the network
 import torch
 import pytorch3d
 # import kornia
@@ -56,84 +57,3 @@ def clipped_mae(x, y, max_val=1):
     img = (diff[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
     cv2.imwrite(f"./out/diff.png", img)
     return diff.mean()
-
-def clipped_shadow(x, y, max_val=1, min_val=0.1):
-    x = x / max_val
-    y = y / max_val
-    mask = (x >= 1) & (y >= 1)
-    diff = y-x
-    diff = torch.where(mask, torch.zeros_like(diff), diff)
-    y = diff.abs().clamp_max(min_val)
-    diff = torch.where((x>=min_val), (diff**2), 2*y*diff.abs()-y**2 )
-    return diff.mean()
-
-def chamfer_3d(x, y, z_tresh=0):
-
-    '''
-    mean distance for every point in x to its nearest point in y
-    '''
-    x = x.reshape(1,-1,3)
-    y = y.reshape(1,-1,3)
-
-    if z_tresh > 0:
-        x_mask = x[...,-1] > y[...,-1].min() * (1-z_tresh) + z_tresh * y[...,-1].max()
-        y_mask = y[...,-1] > y[...,-1].min() * (1-z_tresh) + z_tresh * y[...,-1].max()
-
-    x_nn = knn_points(x[x_mask].reshape(1,-1,3), y, lengths1=None, lengths2=None, K=1)
-    y_nn = knn_points(y[y_mask].reshape(1,-1,3), x, lengths1=None, lengths2=None, K=1)
-
-    cham_x = torch.sqrt(x_nn.dists[..., 0])  # (N, P1)
-    cham_y = torch.sqrt(y_nn.dists[..., 0])  # (N, P1)
-    
-    # Apply point reduction
-    cham_x = cham_x.mean(1)  # (N,)
-    cham_y = cham_y.mean(1)  # (N,)
-    return ( cham_x + cham_y ) * 0.5
-
-def squared_point_mesh_distance(meshes, pcls):
-
-    '''
-    This function fails when faces are too small
-    in which case a precision issue occurs and distances are wrong
-
-    this seems to be fixed by pytorch3d github commit #88f5d79
-    but i'm suspending this function in favor of chamfer_3d
-
-    '''
-    raise NotImplementedError
-
-    points = pcls.points_packed()  # (P, 3)
-    points_first_idx = pcls.cloud_to_packed_first_idx()
-    max_points = pcls.num_points_per_cloud().max().item()
-
-    # packed representation for faces
-    verts_packed = meshes.verts_packed()
-    faces_packed = meshes.faces_packed()
-    tris = verts_packed[faces_packed]  # (T, 3, 3)
-    tris_first_idx = meshes.mesh_to_faces_packed_first_idx()
-
-    # point to face distance: shape (P,)
-    point_to_face = pytorch3d.loss.point_mesh_distance.point_face_distance(
-        points, points_first_idx, tris, tris_first_idx, max_points
-    )
-
-    return point_to_face
-
-
-def mesh2mesh_chamfer(mesh1, mesh2, n_samples=1000000):
-    pcd1 = pytorch3d.structures.Pointclouds([pytorch3d.ops.sample_points_from_meshes(mesh1, n_samples).reshape((n_samples,3))])
-    pcd2 = pytorch3d.structures.Pointclouds([pytorch3d.ops.sample_points_from_meshes(mesh2, n_samples).reshape((n_samples,3))])
-
-    pcd2_to_mesh1 = torch.sqrt(squared_point_mesh_distance(mesh1, pcd2)).mean()
-    pcd1_to_mesh2 = torch.sqrt(squared_point_mesh_distance(mesh2, pcd1)).mean()
-
-    return ( pcd1_to_mesh2 + pcd2_to_mesh1 ) * 0.5
-
-def mesh2mesh_hausdorff(mesh1, mesh2, n_samples=1000000):
-    pcd1 = pytorch3d.structures.Pointclouds([pytorch3d.ops.sample_points_from_meshes(mesh1, n_samples).reshape((n_samples,3))])
-    pcd2 = pytorch3d.structures.Pointclouds([pytorch3d.ops.sample_points_from_meshes(mesh2, n_samples).reshape((n_samples,3))])
-
-    pcd2_to_mesh1 = torch.sqrt(squared_point_mesh_distance(mesh1, pcd2))
-    pcd1_to_mesh2 = torch.sqrt(squared_point_mesh_distance(mesh2, pcd1))
-
-    return max( pcd1_to_mesh2.max(), pcd2_to_mesh1.max() )
