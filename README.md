@@ -15,11 +15,12 @@
 - cameras_below.npz - Viewpoints from below the mesh
 
 #### Meshes 
-mesh.ply - bunny
-cubemesh.ply - mesh with bunny and cubes for half-front rotation
-cubes.ply -  mesh with cubes used when background is provided by our renderer when performing half-front rotation  
-rotation_scene.ply - mesh with bunny and cubes for full rotation
-rotation_cubes.ply - mesh with cubes used when background is provided by our renderer when performing full rotation 
+- mesh.ply - bunny
+- cubemesh.ply - mesh with bunny and cubes for half-front rotation
+- cubes.ply -  mesh with cubes used when background is provided by our renderer when performing half-front rotation  
+- rotation_scene.ply - mesh with bunny and cubes for full rotation
+- rotation_cubes.ply - mesh with cubes used when background is provided by our renderer when performing full rotation 
+
 
 
  
