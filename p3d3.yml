@@ -1,4 +1,4 @@
-name: p3d3tb
+name: p3d3
 channels:
   - pytorch3d
   - pytorch
