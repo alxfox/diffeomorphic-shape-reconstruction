@@ -45,6 +45,7 @@ def render_mesh(mesh, modes, rotations, translations, image_size, blur_radius, f
         shader = SoftSilhouetteShader(blend_params=blend_params)       
         fragments = rasterizer(mesh, R=rotations, T=t)
         images = shader(fragments, mesh)
+        #return alpha channel
         images= images[0,...,3:4]
 
     return images

@@ -44,6 +44,7 @@ def validation(config, N_IT, mesh, shape_net, angle, is_render = False):
     img_grid_width = int(col_count * image_size)
     img_grid_height = int(n_images / col_count * image_size)
 
+    #initialize image grids
     gt_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
     prd_grid = np.zeros((img_grid_height, img_grid_width, 3), dtype=np.uint16)
 
@@ -91,10 +92,6 @@ def validation(config, N_IT, mesh, shape_net, angle, is_render = False):
             max_intensity = config['rendering']['rgb']['max_intensity'] #* (np.random.rand()+1)
             loss_tmp = clipped_mae(gt_image.cuda(), prd_image) / config['training']['n_image_per_batch']
 
-            #print(float(loss_tmp))
-            # loss_tmp = clipped_mae(gt_image.cuda().clamp_max(max_intensity), prd_image, max_intensity) / config['training']['n_image_per_batch']
-            # print("loss",loss_tmp)
-            #(loss_tmp * config['loss']['lambda_image']).backward(retain_graph=True)
             loss_image += loss_tmp 
             
         if config['loss']['lambda_silhouette'] != 0:
@@ -120,12 +117,10 @@ def validation(config, N_IT, mesh, shape_net, angle, is_render = False):
             gt_sil_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
 
             loss_tmp = mse(gt_silhouette.cuda(), prd_silhouette) / config['training']['n_image_per_batch']
-            #(loss_tmp * config['loss']['lambda_silhouette']).backward(retain_graph=True)
+            
             loss_silhouette += loss_tmp
             
-    # path = join('./out',file,'validation_{}')
-    # if os.path.exists(path)== False:
-    #     os.mkdir(path)
+  
     path = config["experiment_path"]
     if (is_render):
         cv2.imwrite(f"{path}/gt_val_{angle}_{N_IT}.png", gt_grid)

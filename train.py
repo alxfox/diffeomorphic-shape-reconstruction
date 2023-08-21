@@ -74,6 +74,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
 
     null_init = init_mesh is None
 
+    #Add tensorboard
     writer = SummaryWriter(config['experiment_path']+"/tensorboard")
     writer.add_hparams({ "lr": config["training"]["lr"], "T":config["sampling"]["T"],
                         "ico_sphere_level": config["sampling"]["ico_sphere_level"] },{"value":0},
@@ -82,6 +83,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
     early_stopper = EarlyStopper(patience=config['validation']['early_stopping_patience'], min_delta=0.0)
 
     def closure():
+        #if saving images in this iter
         is_render_checkpoint = N_IT % config['training']['render_interval'] == 0 or N_IT == n_iterations - 1
         nonlocal init_mesh
 
@@ -107,7 +109,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
 
         batch_idx = torch.randperm(n_images)[:config['training']['n_image_per_batch']]
         loss_image, loss_silhouette, loss_velocity = 0, 0, 0
-
+        #Load hyper-parameters for cropping
         crop = config['rendering']['rgb']['crop']
         crop_ratio = config['rendering']['rgb']['crop_ratio']
         image_size=config['rendering']['rgb']['image_size']
@@ -118,7 +120,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
             x = np.random.randint(0, max_val)
             y = np.random.randint(0, max_val)
 
-        # if is_render_checkpoint:
+
         col_count = config['training']['render_cols']
         img_grid_width = int(col_count * image_size)
         img_grid_height = int(n_images / col_count * image_size)
@@ -128,7 +130,8 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
 
         # gt_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.uint16)
         prd_sil_grid = np.zeros((img_grid_height, img_grid_width, 1), dtype=np.float32)
-
+        
+        #Start optimization of losses
         for i in batch_idx:
             gt_image, gt_silhouette = images[i:i+1], silhouettes[i:i+1]
             gt_cubes = cubes[i:i+1]
@@ -172,6 +175,8 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
                 img = (gt_image[0]*(256**2-1)).detach().cpu().numpy().astype(np.uint16)
                 gt_grid[grid_x_start:grid_x_end, grid_y_start:grid_y_end] = img
 
+
+            
             if config['loss']['lambda_image'] != 0:
                 if crop: 
                     loss_tmp = clipped_mae(cropped_gt_image.cuda(), cropped_prd_image) / config['training']['n_image_per_batch']
@@ -244,8 +249,6 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
         else:
             loss_laplacian_smoothing = 0
 
-        # print("Image loss: ", loss_image)
-
         loss =  loss_image * config['loss']['lambda_image'] + \
                 loss_silhouette * config['loss']['lambda_silhouette'] + \
                 loss_velocity * config['loss']['lambda_velocity']  + \
@@ -278,6 +281,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
         if call_back is not None:
             call_back(mesh, losses[0])
 
+        #Start validation 
         if(N_IT % config['validation']['interval'] == 0 or N_IT == n_iterations-1):
             print("Starting validation...")
             
@@ -285,7 +289,7 @@ def train(config, device, images, silhouettes, cubes, rotations, translations, s
             brdf_net.eval()
             with torch.no_grad():
                 mesh = sample_mesh(config, shape_net, brdf_net)#init_mesh=init_mesh, **params)
-
+                #take account a specific angle looking at the object for validation, otherwise use all the validation viewpoints
                 angle = config['validation']['angle']
 
                 if angle == 'behind':
@@ -372,7 +376,7 @@ if __name__ == '__main__':
     config_list = [join('./config',f) for f in listdir('./config') if isfile(join('./config', f))]
 
     print("Configs to run: ", config_list)
-
+    #Set up experiment for each config file
     for conf in config_list:
         config = yaml.safe_load(open(conf))
         if(not config.get('experiment_path')):
@@ -385,7 +389,7 @@ if __name__ == '__main__':
             os.makedirs(config['experiment_path'])
         except OSError as error:
             print(error)
-
+        #Use of the new L0 value generated from rendering process
         if(config['rendering']['rgb']['L0']=='None'):
             f = open(f'data/dataset/{config["dataset"]}/store.pckl', 'rb')
             config['rendering']['rgb']['L0'] = pickle.load(f).item()
@@ -398,12 +402,12 @@ if __name__ == '__main__':
         device = torch.device('cuda:0')
         manual_seed(config['training']['rand_seed'])
         checkpoint_name = 'checkpoint' #######  'diligent_reading'
-        
+        #Load datasets and camera settings
         from dataloader import load_dataset
         images, silhouettes, cubes, R, T, K, transf = load_dataset('data', n_images=config['training']['n_image_per_batch'], dataset_name=config['dataset'], use_background=config['use_background'], provide_background=config['provide_background'], device=device)
         
         images = images.cpu()
-
+        #Initialization of MLP networks
         pos_encode_weight = torch.cat(tuple(torch.eye(3) * (1.5**i) for i in range(0,14,1)), dim=0) #######
         pos_encode_out_weight = torch.cat(tuple( torch.tensor([1.0/(1.3**i)]*3) for i in range(0,14,1)), dim=0) #######
 
@@ -418,7 +422,7 @@ if __name__ == '__main__':
                             ), constant_fresnel=True).to(device)
 
         optimizer = torch.optim.Adam(list(shape_net.parameters())+list(brdf_net.parameters()), lr=config['training']['lr'])
-
+        #Camera settings
         camera_settings_silhouette = pytorch_camera(config['rendering']['silhouette']['image_size'], K)
         camera_settings = pytorch_camera(config['rendering']['rgb']['image_size'], K)
 
